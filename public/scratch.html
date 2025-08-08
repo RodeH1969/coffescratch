@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Coffee Scratch</title>
+  <link rel="stylesheet" href="./assets/scratch-style.css" />
+</head>
+<body>
+  <div class="header">
+    <img src="./assets/logo.png" alt="Logo" class="logo" />
+    <div class="instructions">Scratch to see if you won!</div>
+  </div>
+
+  <div class="scratch-container">
+    <div class="prize-content">
+      <div id="prizeMessage"></div>
+      <img id="prizeImage" class="coffee-image" style="display: none;" />
+      <div id="prizeAmount" class="prize-amount"></div>
+      <div id="prizeStatus"></div>
+      <div id="uniqueCode"></div>
+    </div>
+    <canvas id="scratchCanvas"></canvas>
+  </div>
+
+  <!-- Ad Banner with Clickable Link -->
+  <div class="ad-banner">
+    <a href="https://www.paramountplus.com/au/?gclid=a2d84b86af821a952a2523136b29fa69&gclsrc=3p.ds&&ftag=IPP-07-10djc8i&vndid=&msclkid=a2d84b86af821a952a2523136b29fa69" 
+       target="_blank" 
+       rel="noopener">
+      <img src="./assets/paramountplusad.png" alt="Paramount Plus Ad" class="ad-image" />
+    </a>
+  </div>
+
+  <script src="./assets/qrious.min.js"></script>
+  <script src="./assets/scratch.js"></script>
+</body>
+</html>

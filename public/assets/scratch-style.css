@@ -1,0 +1,120 @@
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  font-family: Arial, sans-serif;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  padding: 20px;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
+}
+
+.logo {
+  width: 720px;
+  height: auto;
+  display: block;
+  margin: 0 auto 10px auto;
+}
+
+.instructions {
+  color: white;
+  text-align: center;
+  margin-bottom: 20px;
+  font-size: 24px;
+  font-weight: bold;
+  text-shadow:
+    -2px -2px 0 #000,
+     2px -2px 0 #000,
+    -2px  2px 0 #000,
+     2px  2px 0 #000;
+}
+
+.scratch-container {
+  position: relative;
+  border-radius: 15px;
+  overflow: hidden;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
+  max-width: 350px;
+  width: 100%;
+}
+
+.prize-content {
+  background: linear-gradient(45deg, #ffd700, #ffed4e);
+  padding: 40px 20px;
+  text-align: center;
+  color: #333;
+  font-size: 24px;
+  font-weight: bold;
+  min-height: 200px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+}
+
+.coffee-image {
+  width: 80px;
+  height: 80px;
+  margin: 10px 0;
+}
+
+.prize-amount {
+  font-size: 32px;
+  color: #8b4513;
+  text-shadow: 1px 1px 3px rgba(0, 0, 0, 0.2);
+  margin: 10px 0;
+}
+
+#scratchCanvas {
+  position: absolute;
+  top: 0;
+  left: 0;
+  cursor: crosshair;
+  touch-action: none;
+}
+
+/* Ad banner below the scratch card */
+.ad-banner {
+  margin-top: 20px;
+  text-align: center;
+}
+
+.ad-banner img.ad-image {
+  max-width: 100%;
+  height: auto;
+  border-radius: 10px;
+}
+
+/* Responsive adjustments for mobile */
+@media (max-width: 480px) {
+  .logo {
+    width: 380px;
+  }
+
+  .instructions {
+    font-size: 20px;
+  }
+
+  .prize-content {
+    font-size: 20px;
+    padding: 30px 15px;
+  }
+
+  .prize-amount {
+    font-size: 28px;
+  }
+
+  .coffee-image {
+    width: 70px;
+    height: 70px;
+  }
+}

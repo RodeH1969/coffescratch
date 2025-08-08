@@ -1,0 +1,278 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Scratch Off - Try Again</title>
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>☕</text></svg>">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: Arial, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            padding: 20px;
+            user-select: none;
+            -webkit-user-select: none;
+            -webkit-touch-callout: none;
+        }
+
+        .scratch-container {
+            position: relative;
+            border-radius: 15px;
+            overflow: hidden;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.3);
+            max-width: 350px;
+            width: 100%;
+        }
+
+        .prize-content {
+            background: linear-gradient(45deg, #95a5a6, #bdc3c7);
+            padding: 40px 20px;
+            text-align: center;
+            color: #333;
+            font-size: 24px;
+            font-weight: bold;
+            min-height: 200px;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+        }
+
+        .coffee-image {
+            width: 80px;
+            height: 80px;
+            margin: 10px 0;
+        }
+
+        .prize-amount {
+            font-size: 28px;
+            color: #7f8c8d;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
+            margin: 10px 0;
+        }
+
+        #scratchCanvas {
+            position: absolute;
+            top: 0;
+            left: 0;
+            cursor: crosshair;
+            touch-action: none;
+        }
+
+        .instructions {
+            color: white;
+            text-align: center;
+            margin-bottom: 20px;
+            font-size: 24px;
+            font-weight: bold;
+            text-shadow: 
+                -2px -2px 0 #000,
+                 2px -2px 0 #000,
+                -2px  2px 0 #000,
+                 2px  2px 0 #000,
+                -1px -1px 0 #000,
+                 1px -1px 0 #000,
+                -1px  1px 0 #000,
+                 1px  1px 0 #000;
+        }
+
+        .scratch-instruction {
+            display: none;
+        }
+
+        .reset-btn {
+            display: none;
+        }
+    </style>
+</head>
+<body>
+    <div class="instructions">
+        <strong>SCRATCH TO REVEAL YOUR PRIZE</strong>
+    </div>
+
+    <div class="scratch-container">
+        <div class="prize-content">
+            <div style="text-align: center;">😔 OH SHUCKS! 😔</div>
+            <img id="loserImage" class="coffee-image" alt="Better luck next time" style="display: none;">
+            <div class="prize-amount">Not a winner this time!</div>
+            <div>Come back soon! ☕</div>
+        </div>
+        <canvas id="scratchCanvas"></canvas>
+    </div>
+
+    <!-- Space for advertisers -->
+    <div style="height: 150px; margin-top: 30px;">
+        <!-- Advertiser content can go here -->
+    </div>
+
+    <script>
+        const canvas = document.getElementById('scratchCanvas');
+        const ctx = canvas.getContext('2d', { willReadFrequently: true });
+        const container = document.querySelector('.scratch-container');
+        
+        let isScratching = false;
+        let scratchedPercentage = 0;
+        let loserImageData = null;
+
+        // Load the loser image from local assets folder
+        async function loadLoserImage() {
+            try {
+                const img = document.getElementById('loserImage');
+                img.onload = function() {
+                    console.log('Loser image loaded successfully!');
+                    img.style.display = 'block';
+                    loserImageData = './assets/coffee%20beans.png';
+                };
+                img.onerror = function() {
+                    console.log('Failed to load loser image from ./assets/coffee%20beans.png');
+                    console.log('Please check that the file exists in the assets folder');
+                };
+                img.src = './assets/coffee%20beans.png';  // Using coffee beans for "not this time"
+            } catch (error) {
+                console.log('Error loading loser image:', error);
+            }
+        }
+
+        // Set canvas size
+        function resizeCanvas() {
+            const rect = container.getBoundingClientRect();
+            canvas.width = rect.width;
+            canvas.height = rect.height;
+            drawScratchSurface();
+        }
+
+        // Draw the scratch-off surface
+        function drawScratchSurface() {
+            // Create gradient for metallic look
+            const gradient = ctx.createLinearGradient(0, 0, canvas.width, canvas.height);
+            gradient.addColorStop(0, '#c0c0c0');
+            gradient.addColorStop(0.3, '#e6e6e6');
+            gradient.addColorStop(0.7, '#a0a0a0');
+            gradient.addColorStop(1, '#808080');
+            
+            ctx.fillStyle = gradient;
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            // Add texture pattern
+            ctx.fillStyle = 'rgba(255, 255, 255, 0.1)';
+            for (let i = 0; i < canvas.width; i += 20) {
+                for (let j = 0; j < canvas.height; j += 20) {
+                    if ((i + j) % 40 === 0) {
+                        ctx.fillRect(i, j, 10, 10);
+                    }
+                }
+            }
+        }
+
+        // Get touch/mouse position
+        function getEventPos(e) {
+            const rect = canvas.getBoundingClientRect();
+            const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+            const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+            
+            return {
+                x: clientX - rect.left,
+                y: clientY - rect.top
+            };
+        }
+
+        // Scratch function
+        function scratch(e) {
+            if (!isScratching) return;
+            
+            const pos = getEventPos(e);
+            
+            ctx.globalCompositeOperation = 'destination-out';
+            ctx.beginPath();
+            ctx.arc(pos.x, pos.y, 25, 0, 2 * Math.PI);
+            ctx.fill();
+            
+            // Calculate scratched percentage
+            calculateScratchPercentage();
+        }
+
+        // Calculate how much has been scratched
+        function calculateScratchPercentage() {
+            const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+            const pixels = imageData.data;
+            let transparent = 0;
+            
+            for (let i = 3; i < pixels.length; i += 4) {
+                if (pixels[i] === 0) transparent++;
+            }
+            
+            scratchedPercentage = (transparent / (pixels.length / 4)) * 100;
+            
+            // Auto-reveal if most is scratched
+            if (scratchedPercentage > 60) {
+                ctx.globalCompositeOperation = 'destination-out';
+                ctx.fillRect(0, 0, canvas.width, canvas.height);
+            }
+        }
+
+        // Mouse events
+        canvas.addEventListener('mousedown', (e) => {
+            isScratching = true;
+            scratch(e);
+        });
+
+        canvas.addEventListener('mousemove', scratch);
+
+        canvas.addEventListener('mouseup', () => {
+            isScratching = false;
+        });
+
+        // Touch events
+        canvas.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            isScratching = true;
+            scratch(e);
+        });
+
+        canvas.addEventListener('touchmove', (e) => {
+            e.preventDefault();
+            scratch(e);
+        });
+
+        canvas.addEventListener('touchend', (e) => {
+            e.preventDefault();
+            isScratching = false;
+        });
+
+        // Initialize
+        loadLoserImage();
+        resizeCanvas();
+        window.addEventListener('resize', resizeCanvas);
+
+        // Prevent scrolling when touching the canvas
+        document.body.addEventListener('touchstart', (e) => {
+            if (e.target === canvas) {
+                e.preventDefault();
+            }
+        }, { passive: false });
+
+        document.body.addEventListener('touchend', (e) => {
+            if (e.target === canvas) {
+                e.preventDefault();
+            }
+        }, { passive: false });
+
+        document.body.addEventListener('touchmove', (e) => {
+            if (e.target === canvas) {
+                e.preventDefault();
+            }
+        }, { passive: false });
+    </script>
+</body>
+</html>
