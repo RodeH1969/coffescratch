@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+v<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
@@ -44,13 +44,38 @@
     }
     .slot img {
       width: 100%; height: 100%; object-fit: cover;
-      transform-origin: center; display: block;
+      transform-origin: center;
     }
-    .slot.spinning img { animation: wobble 0.22s ease-in-out infinite; }
+    .slot.spinning img {
+      animation: wobble 0.22s ease-in-out infinite;
+    }
     @keyframes wobble {
       0% { transform: scale(1.02) rotate(0deg); }
       50% { transform: scale(1.06) rotate(1.5deg); }
       100% { transform: scale(1.02) rotate(0deg); }
+    }
+
+    /* Final text that replaces ads after spinning */
+    .final-text {
+      position: absolute;
+      inset: 0;
+      display: none;           /* hidden until reveal */
+      align-items: center;
+      justify-content: center;
+      font-weight: 900;
+      letter-spacing: 1px;
+      text-shadow: 0 2px 6px rgba(0,0,0,0.6);
+      user-select: none;
+    }
+    .final-text.win {
+      display: flex;
+      color: #00ff9c;
+      font-size: 32px;
+    }
+    .final-text.lose {
+      display: flex;
+      color: #ff6b6b;
+      font-size: 28px;
     }
 
     .result-banner {
@@ -90,6 +115,8 @@
     @media (max-width: 420px) {
       .slot { width: 82px; height: 100px; }
       .spin-button { width: 100px; height: 100px; }
+      .final-text.win { font-size: 28px; }
+      .final-text.lose { font-size: 24px; }
     }
   </style>
 </head>
@@ -100,47 +127,54 @@
     <div id="status" class="status">Loading token…</div>
 
     <div class="slots-container">
-      <!-- ✅ Absolute paths so there’s no confusion -->
-      <div class="slot" id="slot1"><img id="img1" src="/spin/assets/ad1.png" alt="Ad 1"></div>
-      <div class="slot" id="slot2"><img id="img2" src="/spin/assets/ad2.png" alt="Ad 2"></div>
-      <div class="slot" id="slot3"><img id="img3" src="/spin/assets/ad3.png" alt="Ad 3"></div>
+      <div class="slot" id="slot1">
+        <img id="img1" src="assets/ad1.png" alt="Ad 1">
+        <div class="final-text" id="final1"></div>
+      </div>
+      <div class="slot" id="slot2">
+        <img id="img2" src="assets/ad2.png" alt="Ad 2">
+        <div class="final-text" id="final2"></div>
+      </div>
+      <div class="slot" id="slot3">
+        <img id="img3" src="assets/ad3.png" alt="Ad 3">
+        <div class="final-text" id="final3"></div>
+      </div>
       <div id="resultBanner" class="result-banner">RESULT</div>
     </div>
 
     <button class="spin-button" id="spinButton" disabled>SPIN</button>
 
-    <!-- Winner reveal / link (QR optional) -->
+    <!-- Winner reveal / QR -->
     <div id="winBox" class="win-box">
       <h3>🎉 Winner! Free coffee</h3>
       <div class="qr-wrap">
-        <canvas id="qrCanvas" width="120" height="120" style="display:none;"></canvas>
+        <canvas id="qrCanvas" width="120" height="120"></canvas>
         <div class="qr-note">
+          Show this to the barista to redeem.<br/>
           Token: <span id="tokenText"></span><br/>
-          <a id="verifyLink" href="#" style="color:#ffd700;text-decoration:underline;">Open verify page</a><br/>
-          <span id="qrFallback" class="tiny" style="display:none;">(QR not available — tap link)</span>
+          <a id="verifyLink" href="#" style="color:#ffd700;text-decoration:underline;">Open verify page</a>
         </div>
       </div>
-      <div class="tiny">Barista: opening the link or scanning QR marks this token as redeemed.</div>
+      <div class="tiny">Scanning the QR marks this token as redeemed.</div>
     </div>
 
     <div class="paramount-ad">
       <a href="https://www.paramountplus.com/au/?gclid=a2d84b86af821a952a2523136b29fa69&gclsrc=3p.ds&&ftag=IPP-07-10djc8i&vndid=&msclkid=a2d84b86af821a952a2523136b29fa69"
          target="_blank" rel="noopener">
-        <img src="/spin/assets/paramountplusad.png" alt="Paramount+ Advertisement">
+        <img src="assets/paramountplusad.png" alt="Paramount+ Advertisement">
       </a>
     </div>
 
     <audio id="spinAudio" preload="auto">
-      <source src="/spin/assets/spin.mp3" type="audio/mpeg" />
+      <source src="assets/spin.mp3" type="audio/mpeg" />
     </audio>
     <audio id="winnerAudio" preload="auto">
-      <source src="/spin/assets/winner.mp3" type="audio/mpeg" />
+      <source src="assets/winner.mp3" type="audio/mpeg" />
     </audio>
   </div>
 
-  <!-- QR library intentionally omitted until paths are confirmed working
+  <!-- QR lib (works if /assets/qrious.min.js exists on Render) -->
   <script src="/assets/qrious.min.js"></script>
-  -->
 
   <script>
     const API_BASE = window.location.origin; // same-origin (Render)
@@ -149,6 +183,16 @@
       document.getElementById('slot1'),
       document.getElementById('slot2'),
       document.getElementById('slot3')
+    ];
+    const finals = [
+      document.getElementById('final1'),
+      document.getElementById('final2'),
+      document.getElementById('final3')
+    ];
+    const imgs = [
+      document.getElementById('img1'),
+      document.getElementById('img2'),
+      document.getElementById('img3')
     ];
 
     const spinBtn    = document.getElementById('spinButton');
@@ -160,7 +204,6 @@
     const tokenText  = document.getElementById('tokenText');
     const verifyLink = document.getElementById('verifyLink');
     const banner     = document.getElementById('resultBanner');
-    const qrFallback = document.getElementById('qrFallback');
 
     let isSpinning = false;
     let token = null;
@@ -197,6 +240,15 @@
       }
     }
 
+    function revealFinals(asWin) {
+      // Hide images and show big text on all three slots
+      imgs.forEach(img => img.style.display = 'none');
+      finals.forEach(el => {
+        el.textContent = asWin ? 'WIN' : 'LOSE';
+        el.className = 'final-text ' + (asWin ? 'win' : 'lose');
+      });
+    }
+
     function startSpin() {
       if (isSpinning || !tokenResult) return;
       isSpinning = true;
@@ -210,28 +262,25 @@
       setTimeout(() => {
         slots.forEach(s => s.classList.remove('spinning'));
 
+        const isWin = (tokenResult === 'win');
+        revealFinals(isWin);
+
         banner.style.display = 'block';
-        if (tokenResult === 'win') {
+        if (isWin) {
           banner.textContent = 'WIN!';
           banner.classList.remove('lose'); banner.classList.add('win');
 
-          statusEl.innerHTML = '🎉 Winner! Show this to the barista.';
+          statusEl.innerHTML = '🎉 Winner! Show the QR to the barista.';
           try { winAudio.currentTime = 0; winAudio.play(); } catch {}
 
           const verifyURL = `${API_BASE}/verify.html?token=${encodeURIComponent(token)}`;
           verifyLink.href = verifyURL;
           tokenText.textContent = token;
 
-          // If we later add QRious back and it's present:
+          // Render QR (if library loaded)
           if (window.QRious) {
-            qrCanvas.style.display = 'block';
             new QRious({ element: qrCanvas, size: 120, value: verifyURL });
-            qrFallback.style.display = 'none';
-          } else {
-            qrCanvas.style.display = 'none';
-            qrFallback.style.display = 'inline';
           }
-
           winBox.style.display = 'block';
 
         } else {
