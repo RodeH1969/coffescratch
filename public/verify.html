@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Verify Winner</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      background-color: #f7f7f7;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      height: 100vh;
+      margin: 0;
+    }
+    .verify-box {
+      background: white;
+      border-radius: 8px;
+      box-shadow: 0 0 20px rgba(0, 0, 0, 0.2);
+      padding: 40px;
+      text-align: center;
+      max-width: 400px;
+      width: 100%;
+    }
+    .status {
+      font-size: 22px;
+      font-weight: bold;
+      margin-top: 20px;
+    }
+    .success {
+      color: green;
+    }
+    .error {
+      color: red;
+    }
+  </style>
+</head>
+<body>
+  <div class="verify-box">
+    <h2>Verifying Token...</h2>
+    <div id="status" class="status"></div>
+  </div>
+
+  <script>
+    async function verifyToken() {
+      const params = new URLSearchParams(window.location.search);
+      const token = params.get('token');
+      if (!token) {
+        document.getElementById('status').textContent = '❌ No token provided';
+        document.getElementById('status').className = 'status error';
+        return;
+      }
+
+      try {
+        const response = await fetch('/api/verify', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ token })
+        });
+
+        const data = await response.json();
+
+        if (data.success) {
+          document.getElementById('status').textContent = '✅ Winner verified! Token marked as redeemed.';
+          document.getElementById('status').className = 'status success';
+        } else {
+          document.getElementById('status').textContent = `❌ ${data.message}`;
+          document.getElementById('status').className = 'status error';
+        }
+      } catch (err) {
+        document.getElementById('status').textContent = '❌ Error verifying token.';
+        document.getElementById('status').className = 'status error';
+      }
+    }
+
+    verifyToken();
+  </script>
+</body>
+</html>
