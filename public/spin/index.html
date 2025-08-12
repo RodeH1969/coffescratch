@@ -22,9 +22,8 @@
       max-width: 560px; width: 100%;
       margin-top: 20px;
     }
-    /* 25% smaller logo */
     .logo {
-      width: 180px;
+      width: 180px;  /* 25% smaller */
       max-width: 70%;
       height: auto;
       display: block;
@@ -162,19 +161,19 @@
     const API_BASE = window.location.origin;
 
     // Elements
-    const imgEls   = [document.getElementById('img1'), document.getElementById('img2'), document.getElementById('img3')];
-    const finalIcos= [document.getElementById('finalIco1'), document.getElementById('finalIco2'), document.getElementById('finalIco3')];
-    const spinBtn  = document.getElementById('spinButton');
-    const statusEl = document.getElementById('status');
-    const spinSnd  = document.getElementById('spinAudio');
-    const winSnd   = document.getElementById('winnerAudio');
-    const winBox   = document.getElementById('winBox');
-    const qrCanvas = document.getElementById('qrCanvas');
-    const tokenText= document.getElementById('tokenText');
+    const imgEls     = [document.getElementById('img1'), document.getElementById('img2'), document.getElementById('img3')];
+    const finalIcons = [document.getElementById('finalIco1'), document.getElementById('finalIco2'), document.getElementById('finalIco3')];
+    const spinBtn    = document.getElementById('spinButton');
+    const statusEl   = document.getElementById('status');
+    const spinSnd    = document.getElementById('spinAudio');
+    const winSnd     = document.getElementById('winnerAudio');
+    const winBox     = document.getElementById('winBox');
+    const qrCanvas   = document.getElementById('qrCanvas');
+    const tokenText  = document.getElementById('tokenText');
     const qrFallback = document.getElementById('qrFallback');
 
     // Reel frames (ads)
-    const frames = ["assets/ad1.png", "assets/ad2.png", "assets/ad3.png"];
+    const FRAMES = ["assets/ad1.png", "assets/ad2.png", "assets/ad3.png"];
 
     // State
     let token = null;
@@ -182,40 +181,65 @@
     let isSpinning = false;
 
     // Preload images to avoid flicker
-    function preload(srcs) { srcs.forEach(s => { const i = new Image(); i.src = s; }); }
-    preload(frames.concat(["assets/tick.png","assets/cross.png"]));
+    function preload(srcs) {
+      srcs.forEach(s => { const i = new Image(); i.src = s; });
+    }
+    preload(FRAMES.concat(["assets/tick.png","assets/cross.png"]));
 
+    // Easing + dynamic FPS spinner that never "sticks"
     function easeOutCubic(t) { return 1 - Math.pow(1 - t, 3); }
+    function clamp(v, min, max) { return Math.max(min, Math.min(max, v)); }
+    function lerp(a, b, t) { return a + (b - a) * t; }
 
-    function spinReel(imgEl, durationMs, startOffset = 0) {
+    /**
+     * Spin a reel by cycling its <img> through FRAMES at a dynamic FPS.
+     * Uses an accumulator so frames advance reliably (no stalls at slow speeds).
+     */
+    function spinReel(imgEl, durationMs, startDelayMs = 0) {
       return new Promise(resolve => {
-        const start = performance.now() + startOffset;
-        let lastIdx = 0;
+        const startAt = performance.now() + startDelayMs;
+        let rafId = null;
+        let lastTime = 0;
+        let acc = 0;
+        let frameIdx = 0;
 
-        function step(now) {
-          if (now < start) { requestAnimationFrame(step); return; }
-          const elapsed = Math.min(now - start, durationMs);
-          const t = elapsed / durationMs;
-          const speed = 30 + (1 - easeOutCubic(t)) * 250;
+        function loop(now) {
+          if (now < startAt) { rafId = requestAnimationFrame(loop); return; }
 
-          const changesPerSec = speed / 50;
-          const frameFloat = Math.floor(elapsed / (1000 / Math.max(8, changesPerSec)));
-          const idx = frameFloat % frames.length;
+          if (!lastTime) lastTime = now;
+          const elapsedTotal = now - startAt;
+          const dt = now - lastTime;
+          lastTime = now;
 
-          if (idx !== lastIdx) { imgEl.src = frames[idx]; lastIdx = idx; }
+          const t = clamp(elapsedTotal / durationMs, 0, 1);
+          // FPS decelerates from 40 → 10 using easeOut
+          const fps = lerp(40, 10, easeOutCubic(t));
+          const frameDelay = 1000 / fps;
 
-          if (elapsed < durationMs) requestAnimationFrame(step);
-          else resolve();
+          acc += dt;
+          while (acc >= frameDelay) {
+            acc -= frameDelay;
+            frameIdx = (frameIdx + 1) % FRAMES.length;
+            imgEl.src = FRAMES[frameIdx];
+          }
+
+          if (elapsedTotal < durationMs) {
+            rafId = requestAnimationFrame(loop);
+          } else {
+            if (rafId) cancelAnimationFrame(rafId);
+            resolve();
+          }
         }
-        requestAnimationFrame(step);
+
+        rafId = requestAnimationFrame(loop);
       });
     }
 
     function revealFinals(isWin) {
-      // Hide ad imgs, show tick or cross overlay on all three slots
-      imgEls.forEach(img => img.style.display = 'none');
+      // Hide spinning images, show tick/cross overlay on all three
+      imgEls.forEach(img => { img.style.display = 'none'; });
       const src = isWin ? 'assets/tick.png' : 'assets/cross.png';
-      finalIcos.forEach(el => { el.src = src; el.style.display = 'block'; });
+      finalIcons.forEach(el => { el.src = src; el.style.display = 'block'; });
     }
 
     async function startSpin() {
@@ -226,15 +250,15 @@
 
       try { spinSnd.currentTime = 0; spinSnd.play(); } catch {}
 
-      // Make sure ads visible, finals hidden during spin
+      // Ensure ads visible, finals hidden during spin
       imgEls.forEach(img => { img.style.display = 'block'; });
-      finalIcos.forEach(el => { el.style.display = 'none'; });
+      finalIcons.forEach(el => { el.style.display = 'none'; });
 
-      // Staggered spin times
+      // Staggered reel durations (tuned to feel smooth + quick)
       await Promise.all([
-        spinReel(imgEls[0], 1300, 0),
-        spinReel(imgEls[1], 1600, 80),
-        spinReel(imgEls[2], 1900, 160),
+        spinReel(imgEls[0], 1200, 0),
+        spinReel(imgEls[1], 1500, 80),
+        spinReel(imgEls[2], 1800, 160),
       ]);
 
       try { spinSnd.pause(); spinSnd.currentTime = 0; } catch {}
@@ -276,13 +300,13 @@
         const data = await res.json();
         if (!data.valid) { statusEl.textContent = '❌ Invalid or expired token.'; return; }
         tokenResult = data.result;
-        document.getElementById('spinButton').disabled = false;
+        spinBtn.disabled = false;
       } catch (e) {
         statusEl.textContent = '❌ Error contacting server.';
       }
     }
 
-    document.getElementById('spinButton').addEventListener('click', startSpin);
+    spinBtn.addEventListener('click', startSpin);
     document.addEventListener('DOMContentLoaded', init);
   </script>
 </body>
