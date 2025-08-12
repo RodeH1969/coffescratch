@@ -1,176 +1,313 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="UTF-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1" />
-<title>Coffee Spin</title>
-<link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>☕</text></svg>">
-<style>
-:root { --gold: #ffd700; }
-body {
-  margin: 0; padding: 20px;
-  background: linear-gradient(135deg, #1e3c72, #2a5298);
-  font-family: Arial, sans-serif;
-  display: flex; justify-content: center; align-items: center;
-  min-height: 100vh; color: #fff;
-}
-.slot-machine {
-  background: linear-gradient(145deg, #444, #222);
-  border-radius: 20px; padding: 24px; text-align: center;
-  box-shadow: 0 20px 40px rgba(0,0,0,0.4);
-  border: 3px solid var(--gold);
-  max-width: 560px; width: 100%;
-}
-.logo {
-  width: 180px; max-width: 70%; height: auto;
-  display: block; margin: 0 auto 10px auto;
-  filter: drop-shadow(0 2px 6px rgba(0,0,0,0.45));
-}
-.status { min-height: 44px; font-size: 1.05rem; margin: 8px 0 6px; }
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1" />
+  <title>Coffee Spin</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>☕</text></svg>">
+  <style>
+    :root { --gold: #ffd700; }
+    body {
+      margin: 0; padding: 20px;
+      background: linear-gradient(135deg, #1e3c72, #2a5298);
+      font-family: Arial, sans-serif;
+      display: flex; justify-content: center; align-items: flex-start;
+      min-height: 100vh; color: #fff;
+    }
+    .slot-machine {
+      background: linear-gradient(145deg, #444, #222);
+      border-radius: 20px; padding: 24px; text-align: center;
+      box-shadow: 0 20px 40px rgba(0,0,0,0.4);
+      border: 3px solid var(--gold);
+      max-width: 560px; width: 100%;
+      margin-top: 20px;
+    }
+    .logo {
+      width: 180px;  /* 25% smaller */
+      max-width: 70%;
+      height: auto;
+      display: block;
+      margin: 0 auto 10px auto;
+      filter: drop-shadow(0 2px 6px rgba(0,0,0,0.45));
+    }
 
-.slots-container {
-  display: flex; justify-content: center; gap: 14px;
-  margin: 12px 0 8px; background: #111; padding: 12px;
-  border-radius: 15px; border: 3px solid var(--gold); position: relative;
-}
-.slot {
-  width: 92px; height: 110px; background: #333;
-  border: 3px solid #555; border-radius: 10px;
-  overflow: hidden; box-shadow: inset 0 4px 8px rgba(0,0,0,0.3);
-}
-.slot img {
-  width: 100%; height: auto; display: block;
-}
+    .status { min-height: 24px; font-size: 1.05rem; margin: 6px 0; }
 
-/* Reel spin animation */
-@keyframes spin {
-  0% { transform: translateY(0); }
-  100% { transform: translateY(-300%); }
-}
-.reel {
-  animation: spin 0.5s linear infinite;
-}
+    .slots-container {
+      display: flex; justify-content: center; gap: 14px;
+      margin: 8px 0; background: #111; padding: 12px;
+      border-radius: 15px; border: 3px solid var(--gold); position: relative;
+    }
+    .slot {
+      width: 92px; height: 110px; background: #333;
+      border: 3px solid #555; border-radius: 10px;
+      display: flex; align-items: center; justify-content: center;
+      position: relative; overflow: hidden;
+      box-shadow: inset 0 4px 8px rgba(0,0,0,0.3);
+    }
+    .slot img {
+      width: 100%; height: 100%; object-fit: cover;
+      transform-origin: center;
+      will-change: contents;
+      user-select: none;
+      pointer-events: none;
+    }
 
-.spin-button {
-  background: linear-gradient(145deg, var(--gold), #ffa000);
-  border: none; border-radius: 50%; width: 140px; height: 70px;
-  font-size: 1.1rem; font-weight: bold; color: #333; cursor: pointer;
-  box-shadow: 0 8px 16px rgba(0,0,0,0.3); transition: all 0.2s ease;
-  margin: 10px auto 6px; display: inline-flex; align-items: center; justify-content: center;
-}
-.spin-button:hover { transform: translateY(-2px); }
-.spin-button:disabled { background: #666; color: #ddd; cursor: not-allowed; box-shadow: none; }
+    /* Final icon replaces ads after spin */
+    .final-icon {
+      position: absolute;
+      inset: 0;
+      display: none;
+      object-fit: contain;
+      width: 80%;
+      height: 80%;
+      margin: auto;
+      padding: 6px;
+      filter: drop-shadow(0 2px 6px rgba(0,0,0,0.4));
+    }
 
-.win-box {
-  margin-top: 12px; padding: 12px; background: rgba(0,0,0,0.4);
-  border: 1px solid var(--gold); border-radius: 10px; display: none;
-}
-.win-box h3 { margin: 0 0 8px 0; color: var(--gold); }
-.qr-wrap { display: flex; gap: 12px; align-items: center; justify-content: center; flex-wrap: wrap; }
-.qr-note { font-size: 0.95rem; opacity: 0.9; }
+    /* Capsule spin button */
+    .spin-button {
+      background: linear-gradient(145deg, var(--gold), #ffa000);
+      border: none; border-radius: 999px;
+      width: 180px; height: 60px;
+      font-size: 1.1rem; font-weight: bold; color: #333; cursor: pointer;
+      box-shadow: 0 8px 16px rgba(0,0,0,0.3); transition: all 0.2s ease;
+      margin: 14px auto 6px; display: inline-flex; align-items: center; justify-content: center;
+    }
+    .spin-button:hover { transform: translateY(-2px); }
+    .spin-button:active { transform: translateY(0); }
+    .spin-button:disabled { background: #666; color: #ddd; cursor: not-allowed; box-shadow: none; }
 
-.paramount-ad { margin-top: 18px; text-align: center; }
-.paramount-ad img {
-  max-width: 100%; height: auto; border-radius: 10px;
-  box-shadow: 0 4px 8px rgba(0,0,0,0.3);
-}
-</style>
+    .win-box {
+      margin-top: 12px; padding: 12px; background: rgba(0,0,0,0.4);
+      border: 1px solid var(--gold); border-radius: 10px; display: none;
+    }
+    .win-box h3 { margin: 0 0 8px 0; color: var(--gold); }
+    .qr-wrap { display: flex; gap: 12px; align-items: center; justify-content: center; flex-wrap: wrap; }
+    .qr-note { font-size: 0.95rem; opacity: 0.9; }
+
+    .paramount-ad { margin-top: 18px; text-align: center; }
+    .paramount-ad img {
+      max-width: 100%; height: auto; border-radius: 10px;
+      box-shadow: 0 4px 8px rgba(0,0,0,0.3);
+    }
+    .tiny { opacity: 0.85; font-size: 0.9rem; margin-top: 8px; }
+
+    @media (max-width: 420px) {
+      body { align-items: flex-start; padding-top: 5px; }
+      .slot-machine { margin-top: 5px; }
+      .slot { width: 82px; height: 100px; }
+      .spin-button { width: 160px; height: 55px; }
+      .logo { width: 150px; }
+    }
+  </style>
 </head>
 <body>
-<div class="slot-machine">
-  <img class="logo" src="assets/coffeespinlogo.png" alt="Coffee Spin Logo" />
+  <div class="slot-machine">
+    <img class="logo" src="assets/coffeespinlogo.png" alt="Coffee Spin Logo" />
 
-  <div id="status" class="status">Loading token…</div>
+    <div id="status" class="status"></div>
 
-  <div class="slots-container">
-    <div class="slot" id="slot1"><img id="img1" src="assets/ad1.png"></div>
-    <div class="slot" id="slot2"><img id="img2" src="assets/ad2.png"></div>
-    <div class="slot" id="slot3"><img id="img3" src="assets/ad3.png"></div>
-  </div>
-
-  <button class="spin-button" id="spinButton" disabled>SPIN</button>
-
-  <div id="winBox" class="win-box">
-    <h3>🎉 Winner! Free coffee</h3>
-    <div class="qr-wrap">
-      <canvas id="qrCanvas" width="120" height="120"></canvas>
-      <div class="qr-note">
-        Show this QR code to your barista to get your free coffee!<br/>
-        Token: <span id="tokenText"></span>
+    <div class="slots-container">
+      <div class="slot" id="slot1">
+        <img id="img1" src="assets/ad1.png" alt="Ad 1">
+        <img id="finalIco1" class="final-icon" alt="Result 1" />
+      </div>
+      <div class="slot" id="slot2">
+        <img id="img2" src="assets/ad2.png" alt="Ad 2">
+        <img id="finalIco2" class="final-icon" alt="Result 2" />
+      </div>
+      <div class="slot" id="slot3">
+        <img id="img3" src="assets/ad3.png" alt="Ad 3">
+        <img id="finalIco3" class="final-icon" alt="Result 3" />
       </div>
     </div>
+
+    <button class="spin-button" id="spinButton" disabled>SPIN</button>
+
+    <!-- Winner reveal / QR -->
+    <div id="winBox" class="win-box">
+      <h3>🎉 Winner! Free coffee</h3>
+      <div class="qr-wrap">
+        <canvas id="qrCanvas" width="120" height="120" style="display:none;"></canvas>
+        <div class="qr-note">
+          Token: <span id="tokenText"></span><br/>
+          <span id="qrFallback" class="tiny" style="display:none;">(QR not available — show this token to barista)</span>
+        </div>
+      </div>
+      <div class="tiny">Show this QR code to your barista to get your free coffee!</div>
+    </div>
+
+    <div class="paramount-ad">
+      <a href="https://www.paramountplus.com/au/?gclid=a2d84b86af821a952a2523136b29fa69&gclsrc=3p.ds&&ftag=IPP-07-10djc8i&vndid=&msclkid=a2d84b86af821a952a2523136b29fa69"
+         target="_blank" rel="noopener">
+        <img src="assets/paramountplusad.png" alt="Paramount+ Advertisement">
+      </a>
+    </div>
+
+    <audio id="spinAudio" preload="auto">
+      <source src="assets/spin.mp3" type="audio/mpeg" />
+    </audio>
+    <audio id="winnerAudio" preload="auto">
+      <source src="assets/winner.mp3" type="audio/mpeg" />
+    </audio>
   </div>
 
-  <div class="paramount-ad">
-    <a href="https://www.paramountplus.com/au/" target="_blank" rel="noopener">
-      <img src="assets/paramountplusad.png" alt="Paramount+ Advertisement">
-    </a>
-  </div>
+  <!-- QR lib (fallback-safe) -->
+  <script src="/assets/qrious.min.js"></script>
 
-  <audio id="spinAudio" preload="auto">
-    <source src="assets/spin.mp3" type="audio/mpeg" />
-  </audio>
-  <audio id="winnerAudio" preload="auto">
-    <source src="assets/winner.mp3" type="audio/mpeg" />
-  </audio>
-</div>
+  <script>
+    const API_BASE = window.location.origin;
 
-<script src="/assets/qrious.min.js"></script>
-<script>
-const API_BASE = window.location.origin;
-const imgs = [document.getElementById('img1'), document.getElementById('img2'), document.getElementById('img3')];
-const spinBtn = document.getElementById('spinButton');
-const statusEl = document.getElementById('status');
-const spinAudio = document.getElementById('spinAudio');
-const winAudio = document.getElementById('winnerAudio');
-const winBox = document.getElementById('winBox');
-const qrCanvas = document.getElementById('qrCanvas');
-const tokenText = document.getElementById('tokenText');
+    // Elements
+    const imgEls     = [document.getElementById('img1'), document.getElementById('img2'), document.getElementById('img3')];
+    const finalIcons = [document.getElementById('finalIco1'), document.getElementById('finalIco2'), document.getElementById('finalIco3')];
+    const spinBtn    = document.getElementById('spinButton');
+    const statusEl   = document.getElementById('status');
+    const spinSnd    = document.getElementById('spinAudio');
+    const winSnd     = document.getElementById('winnerAudio');
+    const winBox     = document.getElementById('winBox');
+    const qrCanvas   = document.getElementById('qrCanvas');
+    const tokenText  = document.getElementById('tokenText');
+    const qrFallback = document.getElementById('qrFallback');
 
-let token = null;
-let tokenResult = null;
+    // Reel frames (ads)
+    const FRAMES = ["assets/ad1.png", "assets/ad2.png", "assets/ad3.png"];
 
-async function init() {
-  const params = new URLSearchParams(window.location.search);
-  token = params.get('token');
-  if (!token) { statusEl.textContent = '❌ Missing token.'; return; }
+    // State
+    let token = null;
+    let tokenResult = null; // 'win' | 'lose'
+    let isSpinning = false;
 
-  statusEl.textContent = 'Checking token…';
-  try {
-    const res = await fetch(`${API_BASE}/api/token/${encodeURIComponent(token)}`);
-    const data = await res.json();
-    if (!data.valid) { statusEl.textContent = '❌ Invalid token.'; return; }
-    tokenResult = data.result;
-    statusEl.textContent = '';
-    spinBtn.disabled = false;
-  } catch (e) {
-    statusEl.textContent = '❌ Server error.';
-  }
-}
-
-function startSpin() {
-  spinBtn.disabled = true;
-  imgs.forEach(img => { img.classList.add('reel'); });
-  spinAudio.play();
-
-  setTimeout(() => {
-    imgs.forEach(img => { img.classList.remove('reel'); });
-    if (tokenResult === 'win') {
-      imgs.forEach(img => img.src = 'assets/tick.png');
-      winAudio.play();
-      const verifyURL = `${API_BASE}/verify.html?token=${encodeURIComponent(token)}`;
-      tokenText.textContent = token;
-      new QRious({ element: qrCanvas, size: 120, value: verifyURL });
-      winBox.style.display = 'block';
-    } else {
-      imgs.forEach(img => img.src = 'assets/cross.png');
-      statusEl.textContent = '😢 Oh shucks, not a winner today. Come back soon for another spin!';
+    // Preload images to avoid flicker
+    function preload(srcs) {
+      srcs.forEach(s => { const i = new Image(); i.src = s; });
     }
-  }, 2000);
-}
+    preload(FRAMES.concat(["assets/tick.png","assets/cross.png"]));
 
-spinBtn.addEventListener('click', startSpin);
-document.addEventListener('DOMContentLoaded', init);
-</script>
+    // Easing + dynamic FPS spinner that never "sticks"
+    function easeOutCubic(t) { return 1 - Math.pow(1 - t, 3); }
+    function clamp(v, min, max) { return Math.max(min, Math.min(max, v)); }
+    function lerp(a, b, t) { return a + (b - a) * t; }
+
+    /**
+     * Spin a reel by cycling its <img> through FRAMES at a dynamic FPS.
+     * Uses an accumulator so frames advance reliably (no stalls at slow speeds).
+     */
+    function spinReel(imgEl, durationMs, startDelayMs = 0) {
+      return new Promise(resolve => {
+        const startAt = performance.now() + startDelayMs;
+        let rafId = null;
+        let lastTime = 0;
+        let acc = 0;
+        let frameIdx = 0;
+
+        function loop(now) {
+          if (now < startAt) { rafId = requestAnimationFrame(loop); return; }
+
+          if (!lastTime) lastTime = now;
+          const elapsedTotal = now - startAt;
+          const dt = now - lastTime;
+          lastTime = now;
+
+          const t = clamp(elapsedTotal / durationMs, 0, 1);
+          // FPS decelerates from 40 → 10 using easeOut
+          const fps = lerp(40, 10, easeOutCubic(t));
+          const frameDelay = 1000 / fps;
+
+          acc += dt;
+          while (acc >= frameDelay) {
+            acc -= frameDelay;
+            frameIdx = (frameIdx + 1) % FRAMES.length;
+            imgEl.src = FRAMES[frameIdx];
+          }
+
+          if (elapsedTotal < durationMs) {
+            rafId = requestAnimationFrame(loop);
+          } else {
+            if (rafId) cancelAnimationFrame(rafId);
+            resolve();
+          }
+        }
+
+        rafId = requestAnimationFrame(loop);
+      });
+    }
+
+    function revealFinals(isWin) {
+      // Hide spinning images, show tick/cross overlay on all three
+      imgEls.forEach(img => { img.style.display = 'none'; });
+      const src = isWin ? 'assets/tick.png' : 'assets/cross.png';
+      finalIcons.forEach(el => { el.src = src; el.style.display = 'block'; });
+    }
+
+    async function startSpin() {
+      if (isSpinning || !tokenResult) return;
+      isSpinning = true;
+      spinBtn.disabled = true;
+      statusEl.textContent = '';
+
+      try { spinSnd.currentTime = 0; spinSnd.play(); } catch {}
+
+      // Ensure ads visible, finals hidden during spin
+      imgEls.forEach(img => { img.style.display = 'block'; });
+      finalIcons.forEach(el => { el.style.display = 'none'; });
+
+      // Staggered reel durations (tuned to feel smooth + quick)
+      await Promise.all([
+        spinReel(imgEls[0], 1200, 0),
+        spinReel(imgEls[1], 1500, 80),
+        spinReel(imgEls[2], 1800, 160),
+      ]);
+
+      try { spinSnd.pause(); spinSnd.currentTime = 0; } catch {}
+
+      const isWin = (tokenResult === 'win');
+      revealFinals(isWin);
+
+      if (isWin) {
+        try { winSnd.currentTime = 0; winSnd.play(); } catch {}
+        tokenText.textContent = token;
+
+        const verifyURL = `${API_BASE}/verify.html?token=${encodeURIComponent(token)}`;
+        if (window.QRious) {
+          qrCanvas.style.display = 'block';
+          new QRious({ element: qrCanvas, size: 120, value: verifyURL });
+          qrFallback.style.display = 'none';
+        } else {
+          qrCanvas.style.display = 'none';
+          qrFallback.style.display = 'inline';
+        }
+        winBox.style.display = 'block';
+      } else {
+        winBox.style.display = 'none';
+        statusEl.textContent = 'Oh shucks, not a winner today. Come back soon for another spin!';
+      }
+
+      isSpinning = false;
+    }
+
+    async function init() {
+      const params = new URLSearchParams(window.location.search);
+      token = params.get('token');
+      if (!token) { statusEl.textContent = '❌ Missing token in URL.'; return; }
+
+      statusEl.textContent = '';
+      try {
+        const res = await fetch(`${API_BASE}/api/token/${encodeURIComponent(token)}`);
+        if (!res.ok) throw new Error('Token not found');
+        const data = await res.json();
+        if (!data.valid) { statusEl.textContent = '❌ Invalid or expired token.'; return; }
+        tokenResult = data.result;
+        spinBtn.disabled = false;
+      } catch (e) {
+        statusEl.textContent = '❌ Error contacting server.';
+      }
+    }
+
+    spinBtn.addEventListener('click', startSpin);
+    document.addEventListener('DOMContentLoaded', init);
+  </script>
 </body>
 </html>
