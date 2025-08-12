@@ -54,20 +54,18 @@
       pointer-events: none;
     }
 
-    /* Final text replaces ads after spin */
-    .final-text {
+    /* Final icon replaces ads after spin */
+    .final-icon {
       position: absolute;
       inset: 0;
       display: none;
-      align-items: center;
-      justify-content: center;
-      font-weight: 900;
-      letter-spacing: 1px;
-      text-shadow: 0 2px 6px rgba(0,0,0,0.6);
-      user-select: none;
+      object-fit: contain;
+      width: 80%;
+      height: 80%;
+      margin: auto;
+      padding: 6px;
+      filter: drop-shadow(0 2px 6px rgba(0,0,0,0.4));
     }
-    .final-text.win { display: flex; color: #00ff9c; font-size: 32px; }
-    .final-text.lose { display: flex; color: #ff6b6b; font-size: 28px; }
 
     /* Capsule spin button */
     .spin-button {
@@ -95,15 +93,13 @@
       max-width: 100%; height: auto; border-radius: 10px;
       box-shadow: 0 4px 8px rgba(0,0,0,0.3);
     }
-    .tiny { opacity: 0.85; font-size: 0.85rem; margin-top: 8px; }
+    .tiny { opacity: 0.85; font-size: 0.9rem; margin-top: 8px; }
 
     @media (max-width: 420px) {
       body { align-items: flex-start; padding-top: 5px; }
       .slot-machine { margin-top: 5px; }
       .slot { width: 82px; height: 100px; }
       .spin-button { width: 160px; height: 55px; }
-      .final-text.win { font-size: 28px; }
-      .final-text.lose { font-size: 24px; }
       .logo { width: 150px; }
     }
   </style>
@@ -117,15 +113,15 @@
     <div class="slots-container">
       <div class="slot" id="slot1">
         <img id="img1" src="assets/ad1.png" alt="Ad 1">
-        <div class="final-text" id="final1"></div>
+        <img id="finalIco1" class="final-icon" alt="Result 1" />
       </div>
       <div class="slot" id="slot2">
         <img id="img2" src="assets/ad2.png" alt="Ad 2">
-        <div class="final-text" id="final2"></div>
+        <img id="finalIco2" class="final-icon" alt="Result 2" />
       </div>
       <div class="slot" id="slot3">
         <img id="img3" src="assets/ad3.png" alt="Ad 3">
-        <div class="final-text" id="final3"></div>
+        <img id="finalIco3" class="final-icon" alt="Result 3" />
       </div>
     </div>
 
@@ -167,7 +163,7 @@
 
     // Elements
     const imgEls   = [document.getElementById('img1'), document.getElementById('img2'), document.getElementById('img3')];
-    const finals   = [document.getElementById('final1'), document.getElementById('final2'), document.getElementById('final3')];
+    const finalIcos= [document.getElementById('finalIco1'), document.getElementById('finalIco2'), document.getElementById('finalIco3')];
     const spinBtn  = document.getElementById('spinButton');
     const statusEl = document.getElementById('status');
     const spinSnd  = document.getElementById('spinAudio');
@@ -186,15 +182,11 @@
     let isSpinning = false;
 
     // Preload images to avoid flicker
-    function preload(srcs) {
-      srcs.forEach(s => { const i = new Image(); i.src = s; });
-    }
-    preload(frames);
+    function preload(srcs) { srcs.forEach(s => { const i = new Image(); i.src = s; }); }
+    preload(frames.concat(["assets/tick.png","assets/cross.png"]));
 
-    // Cubic ease-out for deceleration
     function easeOutCubic(t) { return 1 - Math.pow(1 - t, 3); }
 
-    // Spin a single reel by cycling its img src with easing
     function spinReel(imgEl, durationMs, startOffset = 0) {
       return new Promise(resolve => {
         const start = performance.now() + startOffset;
@@ -203,62 +195,48 @@
         function step(now) {
           if (now < start) { requestAnimationFrame(step); return; }
           const elapsed = Math.min(now - start, durationMs);
-          const t = elapsed / durationMs;         // 0 → 1
-          const speed = 30 + (1 - easeOutCubic(t)) * 250; // px/s-ish metaphor; just for frame pacing
+          const t = elapsed / durationMs;
+          const speed = 30 + (1 - easeOutCubic(t)) * 250;
 
-          // Use speed to pick frame index
-          // Convert to "frames per second" feel by mapping speed to ~changes per second
-          const changesPerSec = speed / 50; // tune denominator to taste
+          const changesPerSec = speed / 50;
           const frameFloat = Math.floor(elapsed / (1000 / Math.max(8, changesPerSec)));
           const idx = frameFloat % frames.length;
 
-          if (idx !== lastIdx) {
-            imgEl.src = frames[idx];
-            lastIdx = idx;
-          }
+          if (idx !== lastIdx) { imgEl.src = frames[idx]; lastIdx = idx; }
 
-          if (elapsed < durationMs) {
-            requestAnimationFrame(step);
-          } else {
-            resolve();
-          }
+          if (elapsed < durationMs) requestAnimationFrame(step);
+          else resolve();
         }
         requestAnimationFrame(step);
       });
     }
 
     function revealFinals(isWin) {
-      // Hide images, show WIN/LOSE text
+      // Hide ad imgs, show tick or cross overlay on all three slots
       imgEls.forEach(img => img.style.display = 'none');
-      finals.forEach(el => {
-        el.textContent = isWin ? 'WIN' : 'LOSE';
-        el.className = 'final-text ' + (isWin ? 'win' : 'lose');
-      });
+      const src = isWin ? 'assets/tick.png' : 'assets/cross.png';
+      finalIcos.forEach(el => { el.src = src; el.style.display = 'block'; });
     }
 
     async function startSpin() {
       if (isSpinning || !tokenResult) return;
       isSpinning = true;
       spinBtn.disabled = true;
+      statusEl.textContent = '';
 
       try { spinSnd.currentTime = 0; spinSnd.play(); } catch {}
 
-      // Staggered spin durations (ms) per reel for nicer feel
-      const d1 = 1300;  // left reel
-      const d2 = 1600;  // middle reel (longer)
-      const d3 = 1900;  // right reel (longest)
+      // Make sure ads visible, finals hidden during spin
+      imgEls.forEach(img => { img.style.display = 'block'; });
+      finalIcos.forEach(el => { el.style.display = 'none'; });
 
-      // Make sure images are visible while spinning
-      imgEls.forEach(img => img.style.display = 'block');
-      finals.forEach(el => el.style.display = 'none');
-
+      // Staggered spin times
       await Promise.all([
-        spinReel(imgEls[0], d1, 0),
-        spinReel(imgEls[1], d2, 80),
-        spinReel(imgEls[2], d3, 160),
+        spinReel(imgEls[0], 1300, 0),
+        spinReel(imgEls[1], 1600, 80),
+        spinReel(imgEls[2], 1900, 160),
       ]);
 
-      // Stop sound
       try { spinSnd.pause(); spinSnd.currentTime = 0; } catch {}
 
       const isWin = (tokenResult === 'win');
@@ -280,6 +258,7 @@
         winBox.style.display = 'block';
       } else {
         winBox.style.display = 'none';
+        statusEl.textContent = 'Oh shucks, not a winner today. Come back soon for another spin!';
       }
 
       isSpinning = false;
@@ -297,13 +276,13 @@
         const data = await res.json();
         if (!data.valid) { statusEl.textContent = '❌ Invalid or expired token.'; return; }
         tokenResult = data.result;
-        spinBtn.disabled = false;
+        document.getElementById('spinButton').disabled = false;
       } catch (e) {
         statusEl.textContent = '❌ Error contacting server.';
       }
     }
 
-    spinBtn.addEventListener('click', startSpin);
+    document.getElementById('spinButton').addEventListener('click', startSpin);
     document.addEventListener('DOMContentLoaded', init);
   </script>
 </body>
