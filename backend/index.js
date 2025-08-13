@@ -1,126 +1,172 @@
 // backend/index.js
 const express = require('express');
-const fs = require('fs');
 const path = require('path');
-const QRCode = require('qrcode'); // npm i qrcode
+const QRCode = require('qrcode');
+const { Pool } = require('pg');
+
 const app = express();
-
 const PORT = process.env.PORT || 3000;
-const STORE = path.join(__dirname, 'tokenStore.json');
 const PUBLIC_DIR = path.join(__dirname, '..', 'public');
-
-// If deploying on Render, set BASE_URL to your public hostname.
-// Fallback to origin detection by clients if omitted.
 const BASE_URL = process.env.BASE_URL || 'http://localhost:' + PORT;
 
-// very simple in-process lock for file writes
-let writing = false;
-const withStore = (mutator) =>
-  new Promise((resolve, reject) => {
-    const tryRun = () => {
-      if (writing) return setTimeout(tryRun, 10);
-      writing = true;
-      fs.readFile(STORE, 'utf8', (err, raw) => {
-        let data = [];
-        if (!err && raw) {
-          try { data = JSON.parse(raw); } catch {}
-        }
-        Promise.resolve(mutator(data))
-          .then((result) => {
-            fs.writeFile(STORE, JSON.stringify(data, null, 2), (werr) => {
-              writing = false;
-              if (werr) return reject(werr);
-              resolve(result);
-            });
-          })
-          .catch((e) => {
-            writing = false;
-            reject(e);
-          });
-      });
-    };
-    tryRun();
-  });
+// Database connection
+const pool = new Pool({
+  connectionString: process.env.DATABASE_URL,
+  ssl: { rejectUnauthorized: false }
+});
 
-// Serve static
+// Test database connection
+pool.on('connect', () => {
+  console.log('🗄️  Connected to PostgreSQL database');
+});
+
+pool.on('error', (err) => {
+  console.error('💥 Database connection error:', err);
+});
+
+// Middleware
 app.use(express.static(PUBLIC_DIR));
+app.use(express.json());
 
-// Health
+// Health check
 app.get('/healthz', (_, res) => res.send('ok'));
 
 // Kiosk endpoint: allocate next unassigned token and redirect to /spin with it
 app.get('/scan', async (req, res) => {
+  const client = await pool.connect();
   try {
-    const token = await withStore(async (tokens) => {
-      const next = tokens.find(t => !t.assigned && !t.redeemed);
-      if (!next) return null;
-      next.assigned = true;
-      next.assignedAt = new Date().toISOString();
-      return next.token;
-    });
+    // Use a transaction to prevent race conditions
+    await client.query('BEGIN');
+    
+    // Find and claim the next available token
+    const result = await client.query(`
+      UPDATE tokens 
+      SET assigned = TRUE, assigned_at = CURRENT_TIMESTAMP 
+      WHERE id = (
+        SELECT id FROM tokens 
+        WHERE NOT assigned AND NOT redeemed 
+        ORDER BY id LIMIT 1 
+        FOR UPDATE SKIP LOCKED
+      )
+      RETURNING token
+    `);
 
-    if (!token) {
-      // no tokens left; you can choose to auto-generate a new batch here if you want
+    await client.query('COMMIT');
+
+    if (result.rows.length === 0) {
       return res.status(410).send('No tokens available. Please try again later.');
     }
 
-    // Redirect to the spin page with the token
-    return res.redirect(302, `/spin/index.html?token=${encodeURIComponent(token)}`);
-  } catch (e) {
-    console.error(e);
+    const token = result.rows[0].token;
+    return res.redirect(302, `/index.html?token=${encodeURIComponent(token)}`);
+
+  } catch (error) {
+    await client.query('ROLLBACK');
+    console.error('Error in /scan:', error);
     return res.status(500).send('Server error.');
+  } finally {
+    client.release();
   }
 });
 
-// Token status
-app.get('/api/token/:token', (req, res) => {
-  const raw = fs.existsSync(STORE) ? fs.readFileSync(STORE, 'utf8') : '[]';
-  const tokens = JSON.parse(raw);
-  const t = tokens.find(x => x.token === req.params.token);
-  if (!t) return res.json({ valid: false });
-  return res.json({
-    valid: true,
-    token: t.token,
-    result: t.result,
-    redeemed: t.redeemed,
-    redeemedAt: t.redeemedAt || null,
-    assigned: !!t.assigned,
-    assignedAt: t.assignedAt || null
-  });
+// Token status endpoint
+app.get('/api/token/:token', async (req, res) => {
+  try {
+    const { rows } = await pool.query(
+      'SELECT token, result, redeemed, redeemed_at, assigned, assigned_at FROM tokens WHERE token = $1',
+      [req.params.token]
+    );
+
+    if (rows.length === 0) {
+      return res.json({ valid: false });
+    }
+
+    const token = rows[0];
+    return res.json({
+      valid: true,
+      token: token.token,
+      result: token.result,
+      redeemed: token.redeemed,
+      redeemedAt: token.redeemed_at,
+      assigned: token.assigned,
+      assignedAt: token.assigned_at
+    });
+
+  } catch (error) {
+    console.error('Error getting token status:', error);
+    return res.status(500).json({ valid: false, error: 'server_error' });
+  }
 });
 
-// Redeem token (barista uses verify QR)
-app.post('/api/token/:token/redeem', express.json(), (req, res) => {
-  const raw = fs.existsSync(STORE) ? fs.readFileSync(STORE, 'utf8') : '[]';
-  const tokens = JSON.parse(raw);
-  const idx = tokens.findIndex(x => x.token === req.params.token);
-  if (idx === -1) return res.status(404).json({ ok: false, error: 'not_found' });
-
-  if (tokens[idx].redeemed) {
-    return res.json({ ok: false, error: 'already_redeemed', redeemedAt: tokens[idx].redeemedAt });
+// Legacy verify endpoint (for the verify.html page)
+app.post('/api/verify', async (req, res) => {
+  const { token } = req.body;
+  
+  if (!token) {
+    return res.json({ success: false, message: 'No token provided' });
   }
 
-  tokens[idx].redeemed = true;
-  tokens[idx].redeemedAt = new Date().toISOString();
-  fs.writeFileSync(STORE, JSON.stringify(tokens, null, 2));
-  return res.json({ ok: true, redeemedAt: tokens[idx].redeemedAt });
+  try {
+    const result = await pool.query(`
+      UPDATE tokens 
+      SET redeemed = TRUE, redeemed_at = CURRENT_TIMESTAMP 
+      WHERE token = $1 AND NOT redeemed
+      RETURNING result, redeemed_at
+    `, [token]);
+
+    if (result.rows.length === 0) {
+      // Check if token exists but is already redeemed
+      const existing = await pool.query('SELECT redeemed, redeemed_at FROM tokens WHERE token = $1', [token]);
+      
+      if (existing.rows.length === 0) {
+        return res.json({ success: false, message: 'Invalid token' });
+      } else {
+        return res.json({ success: false, message: 'Token already redeemed' });
+      }
+    }
+
+    return res.json({ success: true, redeemedAt: result.rows[0].redeemed_at });
+
+  } catch (error) {
+    console.error('Error redeeming token:', error);
+    return res.json({ success: false, message: 'Server error' });
+  }
 });
 
-// Printable QR for the counter sticker: encodes /scan
+// Printable QR for counter sticker
 app.get('/qr/sticker', async (req, res) => {
   try {
-    // If you’ve set BASE_URL env var on Render, this will be that domain:
-    // e.g. https://coffescratch.onrender.com/scan
     const kioskUrl = `${BASE_URL.replace(/\/$/, '')}/scan`;
     const png = await QRCode.toBuffer(kioskUrl, { type: 'png', width: 1024, margin: 2 });
     res.setHeader('Content-Type', 'image/png');
     res.send(png);
-  } catch (e) {
-    console.error(e);
+  } catch (error) {
+    console.error('QR generation error:', error);
     res.status(500).send('QR generation failed.');
+  }
+});
+
+// Admin stats endpoint (optional)
+app.get('/api/stats', async (req, res) => {
+  try {
+    const stats = await pool.query(`
+      SELECT 
+        COUNT(*) as total,
+        COUNT(*) FILTER (WHERE assigned) as assigned,
+        COUNT(*) FILTER (WHERE redeemed) as redeemed,
+        COUNT(*) FILTER (WHERE result = 'win') as winners,
+        COUNT(*) FILTER (WHERE NOT assigned AND NOT redeemed) as available
+      FROM tokens
+    `);
+
+    res.json(stats.rows[0]);
+  } catch (error) {
+    console.error('Error getting stats:', error);
+    res.status(500).json({ error: 'server_error' });
   }
 });
 
 app.listen(PORT, () => {
   console.log(`✅ Server running at ${BASE_URL}`);
+  console.log(`🗄️  Database: ${process.env.DATABASE_URL ? 'Connected' : 'Not configured'}`);
 });

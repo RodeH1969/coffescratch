@@ -1,55 +1,73 @@
+// backend/generateTokens.js
 const fs = require('fs');
 const path = require('path');
 const { v4: uuidv4 } = require('uuid');
 
-const BATCH_SIZE = 100;
-const WINNERS_PER_BATCH = 10;
-const TOKEN_FILE = path.join(__dirname, 'tokenStore.json');
+const STORE = path.join(__dirname, 'tokenStore.json');
 
-function loadTokenStore() {
-  if (!fs.existsSync(TOKEN_FILE)) return [];
-  const data = fs.readFileSync(TOKEN_FILE);
-  return JSON.parse(data);
+function loadStore() {
+  if (!fs.existsSync(STORE)) return [];
+  return JSON.parse(fs.readFileSync(STORE, 'utf8'));
 }
 
-function saveTokenStore(store) {
-  fs.writeFileSync(TOKEN_FILE, JSON.stringify(store, null, 2));
+function saveStore(data) {
+  fs.writeFileSync(STORE, JSON.stringify(data, null, 2));
 }
 
-function pickEvenlyDistributedWinners(size, count) {
-  const winners = new Set();
-  const step = Math.floor(size / count);
-  for (let i = 0; i < count; i++) {
-    const base = i * step;
-    const offset = Math.floor(Math.random() * step);
-    winners.add(base + offset);
+/**
+ * Make a batch with evenly distributed winners.
+ * Example: size=150, winners=30  →  one winner in each block of 5.
+ */
+function makeBatch(batchNumber, size = 100, winners = 20) {
+  if (size % winners !== 0) {
+    throw new Error('For even distribution, size must be divisible by winners (e.g., 150/30=5).');
   }
-  return winners;
-}
+  const blockSize = size / winners; // e.g. 5
+  const winnerIdxs = [];
 
-function generateBatch(batchNumber) {
-  const tokenStore = loadTokenStore();
-  const winners = pickEvenlyDistributedWinners(BATCH_SIZE, WINNERS_PER_BATCH);
+  for (let b = 0; b < winners; b++) {
+    const start = b * blockSize;
+    const offset = Math.floor(Math.random() * blockSize); // 0..(blockSize-1)
+    winnerIdxs.push(start + offset);
+  }
 
-  for (let i = 0; i < BATCH_SIZE; i++) {
-    const token = `${batchNumber}_${uuidv4().replace(/-/g, '').slice(0, 8).toUpperCase()}`;
-    const entry = {
+  const batch = [];
+  for (let i = 0; i < size; i++) {
+    const isWin = winnerIdxs.includes(i);
+    // token format: <batch>_<8-hex from UUID>
+    const token = `${batchNumber}_${uuidv4().split('-')[1].toUpperCase()}`;
+    batch.push({
       token,
-      result: winners.has(i) ? 'win' : 'lose',
-      redeemed: false
-    };
-    tokenStore.push(entry);
+      result: isWin ? 'win' : 'lose',
+      redeemed: false,
+      assigned: false,
+      assignedAt: null,
+      redeemedAt: null
+    });
   }
-
-  saveTokenStore(tokenStore);
-  console.log(`✅ Batch ${batchNumber} saved to ${TOKEN_FILE}`);
+  return batch;
 }
 
-// Run from command line
-const batchArg = process.argv[2];
-if (!batchArg || isNaN(parseInt(batchArg))) {
-  console.error('❌ Please provide a numeric batch number: node generateTokens.js 3');
-  process.exit(1);
+function nextBatchNumber(all) {
+  // infer next batch number from existing tokens
+  let max = 0;
+  for (const t of all) {
+    const [b] = t.token.split('_');
+    const n = parseInt(b, 10);
+    if (!isNaN(n) && n > max) max = n;
+  }
+  return max + 1;
 }
 
-generateBatch(batchArg);
+(function main() {
+  const sizeArg = parseInt(process.argv[2] || '100', 10);
+  const winnersArg = parseInt(process.argv[3] || '20', 10);
+
+  const store = loadStore();
+  const batchNo = nextBatchNumber(store);
+  const batch = makeBatch(batchNo, sizeArg, winnersArg);
+  const updated = store.concat(batch);
+  saveStore(updated);
+
+  console.log(`✅ Batch ${batchNo} (${sizeArg} tokens, ${winnersArg} wins) appended to ${STORE}`);
+})();
