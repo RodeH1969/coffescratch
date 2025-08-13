@@ -146,6 +146,15 @@ app.get('/qr/sticker', async (req, res) => {
   }
 });
 
+// Debug endpoint  
+app.get('/debug', (req, res) => {
+  res.json({
+    BASE_URL: process.env.BASE_URL,
+    NODE_ENV: process.env.NODE_ENV,
+    DATABASE_URL: process.env.DATABASE_URL ? 'SET' : 'NOT SET'
+  });
+});
+
 // Admin stats endpoint (optional)
 app.get('/api/stats', async (req, res) => {
   try {
