@@ -1,0 +1,12 @@
+QR Sticker (print this): https://coffescratch.onrender.com/qr/sticker
+Direct customer scan: https://coffescratch.onrender.com/scan
+Live statistics: https://coffescratch.onrender.com/api/stats
+System health check: https://coffescratch.onrender.com/debug
+App health: https://coffescratch.onrender.com/healthz
+Check specific token: https://coffescratch.onrender.com/api/token/TOKEN_HERE
+Example: https://coffescratch.onrender.com/api/token/1_570D
+Render database dashboard: https://dashboard.render.com
+Render web service dashboard: https://dashboard.render.com
+Game preview: https://coffescratch.onrender.com/index.html
+Barista verification page: https://coffescratch.onrender.com/verify.html
+https://coffescratch.onrender.com/api/stats

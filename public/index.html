@@ -87,6 +87,27 @@
     .qr-wrap { display: flex; gap: 12px; align-items: center; justify-content: center; flex-wrap: wrap; }
     .qr-note { font-size: 0.95rem; opacity: 0.9; }
 
+    .save-notice {
+      background: rgba(255,215,0,0.1); 
+      padding: 10px; 
+      border-radius: 8px; 
+      margin: 10px 0;
+      border: 1px solid var(--gold);
+    }
+
+    .download-btn {
+      background: var(--gold); 
+      color: #333; 
+      border: none; 
+      padding: 12px 20px; 
+      border-radius: 8px; 
+      font-weight: bold; 
+      margin: 10px; 
+      cursor: pointer;
+      transition: all 0.2s ease;
+    }
+    .download-btn:hover { transform: translateY(-1px); }
+
     .paramount-ad { margin-top: 18px; text-align: center; }
     .paramount-ad img {
       max-width: 100%; height: auto; border-radius: 10px;
@@ -128,15 +149,26 @@
 
     <!-- Winner reveal / QR -->
     <div id="winBox" class="win-box">
-      <h3>🎉 Winner! Free coffee</h3>
+      <h3>🎉 Winner! Free coffee awaits!</h3>
+      
+      <div class="save-notice">
+        <strong>📱 SAVE THIS NOW:</strong><br/>
+        Screenshot this page or use the download button below
+      </div>
+      
       <div class="qr-wrap">
         <canvas id="qrCanvas" width="120" height="120" style="display:none;"></canvas>
         <div class="qr-note">
-          Token: <span id="tokenText"></span><br/>
+          🎟️ Your winning token: <strong><span id="tokenText"></span></strong><br/>
           <span id="qrFallback" class="tiny" style="display:none;">(QR not available — show this token to barista)</span>
         </div>
       </div>
-      <div class="tiny">Show this QR code to your barista to get your free coffee!</div>
+      
+      <button id="downloadBtn" class="download-btn" style="display:none;">
+        📱 Download QR Code
+      </button>
+      
+      <div class="tiny">Show this QR code OR token number to your barista for free coffee!</div>
     </div>
 
     <div class="paramount-ad">
@@ -171,6 +203,7 @@
     const qrCanvas   = document.getElementById('qrCanvas');
     const tokenText  = document.getElementById('tokenText');
     const qrFallback = document.getElementById('qrFallback');
+    const downloadBtn = document.getElementById('downloadBtn');
 
     // Reel frames (ads)
     const FRAMES = ["assets/ad1.png", "assets/ad2.png", "assets/ad3.png"];
@@ -179,12 +212,25 @@
     let token = null;
     let tokenResult = null; // 'win' | 'lose'
     let isSpinning = false;
+    let qrInstance = null;
 
     // Preload images to avoid flicker
     function preload(srcs) {
       srcs.forEach(s => { const i = new Image(); i.src = s; });
     }
     preload(FRAMES.concat(["assets/tick.png","assets/cross.png"]));
+
+    // Download QR code as image
+    function downloadQRCode() {
+      try {
+        const link = document.createElement('a');
+        link.download = `coffee-winner-${token}.png`;
+        link.href = qrCanvas.toDataURL();
+        link.click();
+      } catch (error) {
+        alert('Download failed. Please take a screenshot instead.');
+      }
+    }
 
     // Easing + dynamic FPS spinner that never "sticks"
     function easeOutCubic(t) { return 1 - Math.pow(1 - t, 3); }
@@ -272,11 +318,13 @@
 
         const verifyURL = `${API_BASE}/verify.html?token=${encodeURIComponent(token)}`;
         if (window.QRious) {
+          qrInstance = new QRious({ element: qrCanvas, size: 120, value: verifyURL });
           qrCanvas.style.display = 'block';
-          new QRious({ element: qrCanvas, size: 120, value: verifyURL });
+          downloadBtn.style.display = 'inline-block';
           qrFallback.style.display = 'none';
         } else {
           qrCanvas.style.display = 'none';
+          downloadBtn.style.display = 'none';
           qrFallback.style.display = 'inline';
         }
         winBox.style.display = 'block';
@@ -307,6 +355,7 @@
     }
 
     spinBtn.addEventListener('click', startSpin);
+    downloadBtn.addEventListener('click', downloadQRCode);
     document.addEventListener('DOMContentLoaded', init);
   </script>
 </body>
