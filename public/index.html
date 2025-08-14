@@ -108,10 +108,17 @@
     }
     .download-btn:hover { transform: translateY(-1px); }
 
-    .paramount-ad { margin-top: 18px; text-align: center; }
-    .paramount-ad img {
-      max-width: 100%; height: auto; border-radius: 10px;
+    .sponsor-ad { 
+      margin-top: 18px; 
+      text-align: center; 
+    }
+    .sponsor-ad img {
+      max-width: 100%; 
+      max-height: 120px;
+      height: auto; 
+      border-radius: 10px;
       box-shadow: 0 4px 8px rgba(0,0,0,0.3);
+      object-fit: contain;
     }
     .tiny { opacity: 0.85; font-size: 0.9rem; margin-top: 8px; }
 
@@ -121,6 +128,7 @@
       .slot { width: 82px; height: 100px; }
       .spin-button { width: 160px; height: 55px; }
       .logo { width: 150px; }
+      .sponsor-ad img { max-height: 80px; }
     }
   </style>
 </head>
@@ -172,11 +180,11 @@
     </div>
 
     <div class="sponsor-ad">
-  <a href="https://www.comparethemarket.com.au"
-     target="_blank" rel="noopener">
-    <img src="assets/comparead.png" alt="Compare Advertisement">
-  </a>
-</div>
+      <a href="https://www.comparethemarket.com.au"
+         target="_blank" rel="noopener">
+        <img src="assets/comparead.png" alt="Compare Advertisement">
+      </a>
+    </div>
 
     <audio id="spinAudio" preload="auto">
       <source src="assets/spin.mp3" type="audio/mpeg" />
@@ -205,8 +213,8 @@
     const qrFallback = document.getElementById('qrFallback');
     const downloadBtn = document.getElementById('downloadBtn');
 
-    // Reel frames (ads)
-    const FRAMES = ["assets/ad1.png", "assets/ad2.png", "assets/ad3.png"];
+    // FIXED: Reel frames (ads) - Updated to new names
+    const FRAMES = ["assets/ad2A.png", "assets/ad2B.png", "assets/ad2C.png"];
 
     // State
     let token = null;
