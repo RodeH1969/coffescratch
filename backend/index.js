@@ -146,6 +146,252 @@ app.get('/qr/sticker', async (req, res) => {
   }
 });
 
+// SECRET ADMIN DASHBOARD - Only you know this URL!
+app.get('/admin-coffee-dashboard-xyz789', async (req, res) => {
+  try {
+    // Get all the dashboard data
+    const stats = await pool.query(`
+      SELECT 
+        COUNT(*) as total,
+        COUNT(*) FILTER (WHERE result = 'win') as total_winners,
+        COUNT(*) FILTER (WHERE assigned) as assigned,
+        COUNT(*) FILTER (WHERE redeemed) as redeemed,
+        COUNT(*) FILTER (WHERE NOT assigned AND NOT redeemed) as available
+      FROM tokens
+    `);
+
+    const lastCustomers = await pool.query(`
+      SELECT token, result, assigned_at 
+      FROM tokens 
+      WHERE assigned = true 
+      ORDER BY assigned_at DESC 
+      LIMIT 10
+    `);
+
+    const recentWinners = await pool.query(`
+      SELECT token, assigned_at, redeemed, redeemed_at 
+      FROM tokens 
+      WHERE result = 'win' AND assigned = true 
+      ORDER BY assigned_at DESC 
+      LIMIT 5
+    `);
+
+    const today = await pool.query(`
+      SELECT 
+        COUNT(*) FILTER (WHERE assigned_at::date = CURRENT_DATE) as today_assigned,
+        COUNT(*) FILTER (WHERE redeemed_at::date = CURRENT_DATE) as today_redeemed,
+        COUNT(*) FILTER (WHERE result = 'win' AND assigned_at::date = CURRENT_DATE) as today_winners
+      FROM tokens
+    `);
+
+    const unredeemed = await pool.query(`
+      SELECT token, assigned_at 
+      FROM tokens 
+      WHERE result = 'win' AND assigned = true AND redeemed = false 
+      ORDER BY assigned_at DESC
+    `);
+
+    const nextToken = await pool.query(`
+      SELECT token FROM tokens 
+      WHERE NOT assigned AND NOT redeemed 
+      ORDER BY id LIMIT 1
+    `);
+
+    // Generate HTML dashboard
+    const html = `
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Coffee Spin Admin Dashboard</title>
+  <style>
+    body { 
+      font-family: Arial, sans-serif; 
+      margin: 20px; 
+      background: #f5f5f5; 
+      line-height: 1.6;
+    }
+    .container { 
+      max-width: 1200px; 
+      margin: 0 auto; 
+      background: white; 
+      padding: 20px; 
+      border-radius: 10px; 
+      box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+    }
+    .header { 
+      text-align: center; 
+      color: #2c3e50; 
+      border-bottom: 3px solid #ffd700; 
+      padding-bottom: 10px; 
+      margin-bottom: 30px;
+    }
+    .stats-grid { 
+      display: grid; 
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); 
+      gap: 20px; 
+      margin-bottom: 30px;
+    }
+    .stat-card { 
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); 
+      color: white; 
+      padding: 20px; 
+      border-radius: 10px; 
+      text-align: center;
+    }
+    .stat-number { 
+      font-size: 2em; 
+      font-weight: bold; 
+      margin-bottom: 5px;
+    }
+    .section { 
+      background: #f8f9fa; 
+      padding: 20px; 
+      margin: 20px 0; 
+      border-radius: 8px; 
+      border-left: 4px solid #ffd700;
+    }
+    .section h3 { 
+      margin-top: 0; 
+      color: #2c3e50;
+    }
+    .token-list { 
+      font-family: monospace; 
+      background: white; 
+      padding: 10px; 
+      border-radius: 5px; 
+      border: 1px solid #ddd;
+    }
+    .win { color: #28a745; font-weight: bold; }
+    .lose { color: #dc3545; }
+    .redeemed { color: #28a745; }
+    .unredeemed { color: #ffc107; }
+    .refresh-btn {
+      background: #ffd700;
+      color: #333;
+      border: none;
+      padding: 10px 20px;
+      border-radius: 5px;
+      cursor: pointer;
+      font-weight: bold;
+      margin-bottom: 20px;
+    }
+    .timestamp { color: #666; font-size: 0.9em; }
+    @media (max-width: 768px) {
+      .container { margin: 10px; padding: 15px; }
+      .stats-grid { grid-template-columns: 1fr 1fr; }
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <h1>☕ Coffee Spin Admin Dashboard</h1>
+      <p>Last updated: ${new Date().toLocaleString()}</p>
+      <button class="refresh-btn" onclick="location.reload()">🔄 Refresh</button>
+    </div>
+
+    <div class="stats-grid">
+      <div class="stat-card">
+        <div class="stat-number">${stats.rows[0].total}</div>
+        <div>Total Tokens</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-number">${stats.rows[0].assigned}</div>
+        <div>Customers Played</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-number">${stats.rows[0].redeemed}</div>
+        <div>Coffee Redeemed</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-number">${stats.rows[0].available}</div>
+        <div>Available</div>
+      </div>
+    </div>
+
+    <div class="section">
+      <h3>📅 Today's Activity</h3>
+      <div class="token-list">
+        <strong>Customers Played:</strong> ${today.rows[0].today_assigned}<br>
+        <strong>Winners Today:</strong> ${today.rows[0].today_winners}<br>
+        <strong>Coffee Redeemed:</strong> ${today.rows[0].today_redeemed}
+      </div>
+    </div>
+
+    <div class="section">
+      <h3>👥 Last 10 Customers</h3>
+      <div class="token-list">
+        ${lastCustomers.rows.length === 0 ? 'No customers yet!' : 
+          lastCustomers.rows.map((row, i) => {
+            const time = new Date(row.assigned_at).toLocaleString();
+            const winStatus = row.result === 'win' ? 
+              '<span class="win">🎉 WIN</span>' : 
+              '<span class="lose">❌ LOSE</span>';
+            return `${i+1}. ${row.token} - ${winStatus} - <span class="timestamp">${time}</span>`;
+          }).join('<br>')
+        }
+      </div>
+    </div>
+
+    <div class="section">
+      <h3>🎉 Recent Winners</h3>
+      <div class="token-list">
+        ${recentWinners.rows.length === 0 ? 'No winners yet!' :
+          recentWinners.rows.map((row, i) => {
+            const time = new Date(row.assigned_at).toLocaleString();
+            const status = row.redeemed ? 
+              `<span class="redeemed">✅ REDEEMED (${new Date(row.redeemed_at).toLocaleString()})</span>` : 
+              '<span class="unredeemed">⏳ NOT REDEEMED</span>';
+            return `${i+1}. ${row.token} - <span class="timestamp">${time}</span> - ${status}`;
+          }).join('<br>')
+        }
+      </div>
+    </div>
+
+    ${unredeemed.rows.length > 0 ? `
+    <div class="section" style="border-left-color: #ffc107; background: #fff3cd;">
+      <h3>⚠️ Unredeemed Winners (${unredeemed.rows.length})</h3>
+      <div class="token-list">
+        ${unredeemed.rows.map((row, i) => {
+          const time = new Date(row.assigned_at).toLocaleString();
+          return `${i+1}. ${row.token} - Won at <span class="timestamp">${time}</span>`;
+        }).join('<br>')}
+      </div>
+    </div>
+    ` : ''}
+
+    <div class="section">
+      <h3>🔮 Next Customer</h3>
+      <div class="token-list">
+        ${nextToken.rows.length > 0 ? 
+          `Next customer will get token: <strong>${nextToken.rows[0].token}</strong>` : 
+          'No tokens available!'
+        }
+      </div>
+    </div>
+
+    <div class="section">
+      <h3>📊 Win Rate Analysis</h3>
+      <div class="token-list">
+        <strong>Total Winners:</strong> ${stats.rows[0].total_winners} out of ${stats.rows[0].total} tokens<br>
+        <strong>Win Rate:</strong> ${Math.round(stats.rows[0].total_winners/stats.rows[0].total*100)}%<br>
+        <strong>Remaining Winners:</strong> ${stats.rows[0].total_winners - stats.rows[0].redeemed} unredeemed
+      </div>
+    </div>
+  </div>
+</body>
+</html>`;
+
+    res.send(html);
+
+  } catch (error) {
+    console.error('Admin dashboard error:', error);
+    res.status(500).send('Dashboard error');
+  }
+});
+
 // Debug endpoint  
 app.get('/debug', (req, res) => {
   res.json({
@@ -178,4 +424,5 @@ app.get('/api/stats', async (req, res) => {
 app.listen(PORT, () => {
   console.log(`✅ Server running at ${BASE_URL}`);
   console.log(`🗄️  Database: ${process.env.DATABASE_URL ? 'Connected' : 'Not configured'}`);
+  console.log(`🔒 Admin dashboard: ${BASE_URL}/admin-coffee-dashboard-xyz789`);
 });
