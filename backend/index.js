@@ -28,14 +28,19 @@ pool.on('error', (err) => {
 app.use(express.static(PUBLIC_DIR));
 app.use(express.json());
 
+// Trust proxy for correct IP detection
+app.set('trust proxy', true);
+
 // Health check
 app.get('/healthz', (_, res) => res.send('ok'));
 
 // UPDATED: Kiosk endpoint with daily scan limits
 app.get('/scan', async (req, res) => {
-  const clientIP = req.ip || req.connection.remoteAddress || req.socket.remoteAddress || 
-    (req.connection.socket ? req.connection.socket.remoteAddress : null) || 
-    req.headers['x-forwarded-for']?.split(',')[0]?.trim() || '127.0.0.1';
+  const clientIP = req.ip || req.headers['x-forwarded-for']?.split(',')[0]?.trim() || 
+    req.headers['x-real-ip'] || req.headers['cf-connecting-ip'] || 
+    req.connection?.remoteAddress || req.socket?.remoteAddress || '127.0.0.1';
+
+  console.log(`🔍 Scan request from IP: ${clientIP}`);
 
   const client = await pool.connect();
   try {
@@ -50,6 +55,7 @@ app.get('/scan', async (req, res) => {
     if (existingToday.rows.length > 0) {
       // IP already got a token today - redirect to existing token
       const existingToken = existingToday.rows[0].token;
+      console.log(`🚫 IP ${clientIP} already used today, redirecting to token: ${existingToken}`);
       await client.query('COMMIT');
       return res.redirect(302, `/index.html?token=${encodeURIComponent(existingToken)}`);
     }
@@ -73,6 +79,7 @@ app.get('/scan', async (req, res) => {
     }
 
     const token = result.rows[0].token;
+    console.log(`✅ New token ${token} assigned to IP: ${clientIP}`);
 
     // Record this IP's daily scan
     await client.query(`
@@ -465,6 +472,25 @@ app.get('/debug', (req, res) => {
     BASE_URL: process.env.BASE_URL,
     NODE_ENV: process.env.NODE_ENV,
     DATABASE_URL: process.env.DATABASE_URL ? 'SET' : 'NOT SET'
+  });
+});
+
+// IP debug endpoint
+app.get('/ip-debug', (req, res) => {
+  const clientIP = req.ip || req.headers['x-forwarded-for']?.split(',')[0]?.trim() || 
+    req.headers['x-real-ip'] || req.headers['cf-connecting-ip'] || 
+    req.connection?.remoteAddress || req.socket?.remoteAddress || '127.0.0.1';
+  
+  res.json({
+    detectedIP: clientIP,
+    headers: {
+      'x-forwarded-for': req.headers['x-forwarded-for'],
+      'x-real-ip': req.headers['x-real-ip'],
+      'cf-connecting-ip': req.headers['cf-connecting-ip']
+    },
+    req_ip: req.ip,
+    connection_remoteAddress: req.connection?.remoteAddress,
+    socket_remoteAddress: req.socket?.remoteAddress
   });
 });
 
