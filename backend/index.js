@@ -31,13 +31,29 @@ app.use(express.json());
 // Health check
 app.get('/healthz', (_, res) => res.send('ok'));
 
-// Kiosk endpoint: allocate next unassigned token and redirect to /spin with it
+// UPDATED: Kiosk endpoint with daily scan limits
 app.get('/scan', async (req, res) => {
+  const clientIP = req.ip || req.connection.remoteAddress || req.socket.remoteAddress || 
+    (req.connection.socket ? req.connection.socket.remoteAddress : null) || 
+    req.headers['x-forwarded-for']?.split(',')[0]?.trim() || '127.0.0.1';
+
   const client = await pool.connect();
   try {
-    // Use a transaction to prevent race conditions
     await client.query('BEGIN');
     
+    // Check if this IP already got a token today
+    const existingToday = await client.query(`
+      SELECT token FROM daily_scans 
+      WHERE ip_address = $1 AND scan_date = CURRENT_DATE
+    `, [clientIP]);
+
+    if (existingToday.rows.length > 0) {
+      // IP already got a token today - redirect to existing token
+      const existingToken = existingToday.rows[0].token;
+      await client.query('COMMIT');
+      return res.redirect(302, `/index.html?token=${encodeURIComponent(existingToken)}`);
+    }
+
     // Find and claim the next available token
     const result = await client.query(`
       UPDATE tokens 
@@ -51,13 +67,21 @@ app.get('/scan', async (req, res) => {
       RETURNING token
     `);
 
-    await client.query('COMMIT');
-
     if (result.rows.length === 0) {
+      await client.query('ROLLBACK');
       return res.status(410).send('No tokens available. Please try again later.');
     }
 
     const token = result.rows[0].token;
+
+    // Record this IP's daily scan
+    await client.query(`
+      INSERT INTO daily_scans (ip_address, token, scan_date)
+      VALUES ($1, $2, CURRENT_DATE)
+      ON CONFLICT (ip_address, scan_date) DO NOTHING
+    `, [clientIP, token]);
+
+    await client.query('COMMIT');
     return res.redirect(302, `/index.html?token=${encodeURIComponent(token)}`);
 
   } catch (error) {
@@ -198,6 +222,13 @@ app.get('/admin-coffee-dashboard-xyz789', async (req, res) => {
       ORDER BY id LIMIT 20
     `);
 
+    // Get daily scan stats
+    const dailyScans = await pool.query(`
+      SELECT COUNT(*) as unique_visitors_today
+      FROM daily_scans 
+      WHERE scan_date = CURRENT_DATE
+    `);
+
     // Function to convert UTC to AEST
     const toAEST = (utcDate) => {
       return new Date(utcDate).toLocaleString('en-AU', {
@@ -298,6 +329,14 @@ app.get('/admin-coffee-dashboard-xyz789', async (req, res) => {
     .timestamp { color: #666; font-size: 0.9em; }
     .upcoming-win { background: #d4edda; padding: 2px 4px; border-radius: 3px; }
     .upcoming-lose { background: #f8d7da; padding: 2px 4px; border-radius: 3px; }
+    .security-notice { 
+      background: #d1ecf1; 
+      color: #0c5460; 
+      padding: 10px; 
+      border-radius: 5px; 
+      margin: 10px 0; 
+      border-left: 4px solid #bee5eb;
+    }
     @media (max-width: 768px) {
       .container { margin: 10px; padding: 15px; }
       .stats-grid { grid-template-columns: 1fr 1fr; }
@@ -310,6 +349,9 @@ app.get('/admin-coffee-dashboard-xyz789', async (req, res) => {
       <h1>☕ Coffee Spin Admin Dashboard</h1>
       <p>Last updated: ${currentTimeAEST} AEST</p>
       <button class="refresh-btn" onclick="location.reload()">🔄 Refresh</button>
+      <div class="security-notice">
+        🔒 <strong>Daily Limit Active:</strong> Each customer can only get 1 token per day (prevents abuse)
+      </div>
     </div>
 
     <div class="stats-grid">
@@ -334,6 +376,7 @@ app.get('/admin-coffee-dashboard-xyz789', async (req, res) => {
     <div class="section">
       <h3>📅 Today's Activity</h3>
       <div class="token-list">
+        <strong>Unique Visitors:</strong> ${dailyScans.rows[0].unique_visitors_today}<br>
         <strong>Customers Played:</strong> ${today.rows[0].today_assigned}<br>
         <strong>Winners Today:</strong> ${today.rows[0].today_winners}<br>
         <strong>Coffee Redeemed:</strong> ${today.rows[0].today_redeemed}
