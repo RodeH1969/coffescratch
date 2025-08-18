@@ -165,7 +165,7 @@ app.get('/admin-coffee-dashboard-xyz789', async (req, res) => {
       FROM tokens 
       WHERE assigned = true 
       ORDER BY assigned_at DESC 
-      LIMIT 10
+      LIMIT 30
     `);
 
     const recentWinners = await pool.query(`
@@ -173,7 +173,7 @@ app.get('/admin-coffee-dashboard-xyz789', async (req, res) => {
       FROM tokens 
       WHERE result = 'win' AND assigned = true 
       ORDER BY assigned_at DESC 
-      LIMIT 5
+      LIMIT 10
     `);
 
     const today = await pool.query(`
@@ -191,11 +191,27 @@ app.get('/admin-coffee-dashboard-xyz789', async (req, res) => {
       ORDER BY assigned_at DESC
     `);
 
-    const nextToken = await pool.query(`
-      SELECT token FROM tokens 
+    const upcomingTokens = await pool.query(`
+      SELECT token, result
+      FROM tokens 
       WHERE NOT assigned AND NOT redeemed 
-      ORDER BY id LIMIT 1
+      ORDER BY id LIMIT 20
     `);
+
+    // Function to convert UTC to AEST
+    const toAEST = (utcDate) => {
+      return new Date(utcDate).toLocaleString('en-AU', {
+        timeZone: 'Australia/Brisbane',
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit'
+      });
+    };
+
+    const currentTimeAEST = toAEST(new Date());
 
     // Generate HTML dashboard
     const html = `
@@ -262,6 +278,8 @@ app.get('/admin-coffee-dashboard-xyz789', async (req, res) => {
       padding: 10px; 
       border-radius: 5px; 
       border: 1px solid #ddd;
+      max-height: 400px;
+      overflow-y: auto;
     }
     .win { color: #28a745; font-weight: bold; }
     .lose { color: #dc3545; }
@@ -278,6 +296,8 @@ app.get('/admin-coffee-dashboard-xyz789', async (req, res) => {
       margin-bottom: 20px;
     }
     .timestamp { color: #666; font-size: 0.9em; }
+    .upcoming-win { background: #d4edda; padding: 2px 4px; border-radius: 3px; }
+    .upcoming-lose { background: #f8d7da; padding: 2px 4px; border-radius: 3px; }
     @media (max-width: 768px) {
       .container { margin: 10px; padding: 15px; }
       .stats-grid { grid-template-columns: 1fr 1fr; }
@@ -288,7 +308,7 @@ app.get('/admin-coffee-dashboard-xyz789', async (req, res) => {
   <div class="container">
     <div class="header">
       <h1>☕ Coffee Spin Admin Dashboard</h1>
-      <p>Last updated: ${new Date().toLocaleString()}</p>
+      <p>Last updated: ${currentTimeAEST} AEST</p>
       <button class="refresh-btn" onclick="location.reload()">🔄 Refresh</button>
     </div>
 
@@ -321,11 +341,11 @@ app.get('/admin-coffee-dashboard-xyz789', async (req, res) => {
     </div>
 
     <div class="section">
-      <h3>👥 Last 10 Customers</h3>
+      <h3>👥 Last 30 Customers</h3>
       <div class="token-list">
         ${lastCustomers.rows.length === 0 ? 'No customers yet!' : 
           lastCustomers.rows.map((row, i) => {
-            const time = new Date(row.assigned_at).toLocaleString();
+            const time = toAEST(row.assigned_at);
             const winStatus = row.result === 'win' ? 
               '<span class="win">🎉 WIN</span>' : 
               '<span class="lose">❌ LOSE</span>';
@@ -336,13 +356,27 @@ app.get('/admin-coffee-dashboard-xyz789', async (req, res) => {
     </div>
 
     <div class="section">
+      <h3>🔮 Next 20 Upcoming Tokens</h3>
+      <div class="token-list">
+        ${upcomingTokens.rows.length === 0 ? 'No tokens available!' :
+          upcomingTokens.rows.map((row, i) => {
+            const winStatus = row.result === 'win' ? 
+              `<span class="upcoming-win">🎉 WINNER</span>` : 
+              `<span class="upcoming-lose">❌ lose</span>`;
+            return `${i+1}. ${row.token} - ${winStatus}`;
+          }).join('<br>')
+        }
+      </div>
+    </div>
+
+    <div class="section">
       <h3>🎉 Recent Winners</h3>
       <div class="token-list">
         ${recentWinners.rows.length === 0 ? 'No winners yet!' :
           recentWinners.rows.map((row, i) => {
-            const time = new Date(row.assigned_at).toLocaleString();
+            const time = toAEST(row.assigned_at);
             const status = row.redeemed ? 
-              `<span class="redeemed">✅ REDEEMED (${new Date(row.redeemed_at).toLocaleString()})</span>` : 
+              `<span class="redeemed">✅ REDEEMED (${toAEST(row.redeemed_at)})</span>` : 
               '<span class="unredeemed">⏳ NOT REDEEMED</span>';
             return `${i+1}. ${row.token} - <span class="timestamp">${time}</span> - ${status}`;
           }).join('<br>')
@@ -355,22 +389,12 @@ app.get('/admin-coffee-dashboard-xyz789', async (req, res) => {
       <h3>⚠️ Unredeemed Winners (${unredeemed.rows.length})</h3>
       <div class="token-list">
         ${unredeemed.rows.map((row, i) => {
-          const time = new Date(row.assigned_at).toLocaleString();
+          const time = toAEST(row.assigned_at);
           return `${i+1}. ${row.token} - Won at <span class="timestamp">${time}</span>`;
         }).join('<br>')}
       </div>
     </div>
     ` : ''}
-
-    <div class="section">
-      <h3>🔮 Next Customer</h3>
-      <div class="token-list">
-        ${nextToken.rows.length > 0 ? 
-          `Next customer will get token: <strong>${nextToken.rows[0].token}</strong>` : 
-          'No tokens available!'
-        }
-      </div>
-    </div>
 
     <div class="section">
       <h3>📊 Win Rate Analysis</h3>
