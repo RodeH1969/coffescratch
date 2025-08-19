@@ -29,9 +29,12 @@
       width: 100%;
     }
     
-    .header {
-      color: #2c3e50;
+    .display-logo {
+      max-width: 100%;
+      height: auto;
+      max-height: 120px;
       margin-bottom: 20px;
+      border-radius: 10px;
     }
     
     .qr-container {
@@ -63,17 +66,11 @@
     .loading {
       color: #ffc107;
     }
-    
-    .coffee-icon {
-      font-size: 48px;
-      margin-bottom: 10px;
-    }
   </style>
 </head>
 <body>
   <div class="display-container">
-    <div class="coffee-icon">☕</div>
-    <h1 class="header">Coffee Spin Game</h1>
+    <img src="/display.png" alt="Coffee Game" class="display-logo">
     
     <div class="qr-container">
       <canvas id="qrcode" width="200" height="200"></canvas>
