@@ -101,57 +101,36 @@ app.get('/scan', async (req, res) => {
   }
 });
 
-// NEW: Generate single-use token for iPhone display
+// FIXED: Generate single-use token for iPhone display
 app.post('/api/generate-single-use-token', async (req, res) => {
   try {
-    // Find and claim the next available token
-    const client = await pool.connect();
-    
-    try {
-      await client.query('BEGIN');
-      
-      const result = await client.query(`
-        UPDATE tokens 
-        SET assigned = TRUE, assigned_at = CURRENT_TIMESTAMP 
-        WHERE id = (
-          SELECT id FROM tokens 
-          WHERE NOT assigned AND NOT redeemed 
-          ORDER BY id LIMIT 1 
-          FOR UPDATE SKIP LOCKED
-        )
-        RETURNING token
-      `);
+    // Find next available token WITHOUT marking it as assigned yet
+    const result = await pool.query(`
+      SELECT token FROM tokens 
+      WHERE NOT assigned AND NOT redeemed 
+      ORDER BY id LIMIT 1
+    `);
 
-      if (result.rows.length === 0) {
-        await client.query('ROLLBACK');
-        return res.json({ success: false, message: 'No tokens available' });
-      }
-
-      const gameToken = result.rows[0].token;
-      
-      // Create single-use token
-      const singleUseToken = `SU_${uuidv4().split('-')[0].toUpperCase()}`;
-      
-      await client.query(`
-        INSERT INTO single_use_tokens (token) 
-        VALUES ($1)
-      `, [singleUseToken]);
-      
-      await client.query('COMMIT');
-      
-      console.log(`📱 Generated single-use token: ${singleUseToken} -> ${gameToken}`);
-      
-      res.json({ 
-        success: true, 
-        token: `${singleUseToken}:${gameToken}` 
-      });
-      
-    } catch (error) {
-      await client.query('ROLLBACK');
-      throw error;
-    } finally {
-      client.release();
+    if (result.rows.length === 0) {
+      return res.json({ success: false, message: 'No tokens available' });
     }
+
+    const gameToken = result.rows[0].token;
+    
+    // Create single-use token
+    const singleUseToken = `SU_${uuidv4().split('-')[0].toUpperCase()}`;
+    
+    await pool.query(`
+      INSERT INTO single_use_tokens (token) 
+      VALUES ($1)
+    `, [singleUseToken]);
+    
+    console.log(`📱 Generated single-use token: ${singleUseToken} -> ${gameToken}`);
+    
+    res.json({ 
+      success: true, 
+      token: `${singleUseToken}:${gameToken}` 
+    });
 
   } catch (error) {
     console.error('Error generating single-use token:', error);
@@ -159,7 +138,7 @@ app.post('/api/generate-single-use-token', async (req, res) => {
   }
 });
 
-// NEW: Check if single-use token was used
+// FIXED: Check if single-use token was used
 app.get('/api/check-token-used/:token', async (req, res) => {
   try {
     const tokenParts = req.params.token.split(':');
@@ -169,20 +148,13 @@ app.get('/api/check-token-used/:token', async (req, res) => {
     
     const [singleUseToken, gameToken] = tokenParts;
     
-    // Check if the game token has been accessed
+    // Check if the single-use token has been marked as used
     const result = await pool.query(`
-      SELECT assigned_at FROM tokens 
-      WHERE token = $1 AND assigned = TRUE
-    `, [gameToken]);
+      SELECT used FROM single_use_tokens 
+      WHERE token = $1
+    `, [singleUseToken]);
     
-    if (result.rows.length > 0) {
-      // Mark single-use token as used
-      await pool.query(`
-        UPDATE single_use_tokens 
-        SET used = TRUE, used_at = CURRENT_TIMESTAMP 
-        WHERE token = $1 AND used = FALSE
-      `, [singleUseToken]);
-      
+    if (result.rows.length > 0 && result.rows[0].used) {
       res.json({ used: true });
     } else {
       res.json({ used: false });
@@ -194,16 +166,19 @@ app.get('/api/check-token-used/:token', async (req, res) => {
   }
 });
 
-// Token status endpoint
+// UPDATED: Token status endpoint that handles single-use tokens
 app.get('/api/token/:token', async (req, res) => {
   try {
     // Handle single-use token format
     const tokenParam = req.params.token;
     let actualToken = tokenParam;
+    let singleUseToken = null;
     
     // If it's a single-use token format (SU_XXXX:GAME_TOKEN)
     if (tokenParam.includes(':')) {
-      const [singleUseToken, gameToken] = tokenParam.split(':');
+      const [suToken, gameToken] = tokenParam.split(':');
+      singleUseToken = suToken;
+      actualToken = gameToken;
       
       // Verify single-use token is valid and not used
       const singleUseCheck = await pool.query(`
@@ -226,28 +201,63 @@ app.get('/api/token/:token', async (req, res) => {
         WHERE token = $1
       `, [singleUseToken]);
       
-      actualToken = gameToken;
+      console.log(`🎯 Single-use token ${singleUseToken} marked as used`);
     }
     
-    const { rows } = await pool.query(
-      'SELECT token, result, redeemed, redeemed_at, assigned, assigned_at FROM tokens WHERE token = $1',
-      [actualToken]
-    );
-
-    if (rows.length === 0) {
-      return res.json({ valid: false });
+    // Now mark the actual game token as assigned (this is when it's actually used)
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+      
+      // Check if token exists and is available
+      const tokenCheck = await client.query(`
+        SELECT token, result, redeemed, assigned FROM tokens 
+        WHERE token = $1
+      `, [actualToken]);
+      
+      if (tokenCheck.rows.length === 0) {
+        await client.query('ROLLBACK');
+        return res.json({ valid: false, message: 'Token not found' });
+      }
+      
+      const tokenData = tokenCheck.rows[0];
+      
+      if (tokenData.assigned && singleUseToken) {
+        // If this is a single-use token and the game token was already assigned,
+        // it means someone else used it first
+        await client.query('ROLLBACK');
+        return res.json({ valid: false, message: 'Token already claimed by another customer' });
+      }
+      
+      // Mark token as assigned if it wasn't already
+      if (!tokenData.assigned) {
+        await client.query(`
+          UPDATE tokens 
+          SET assigned = TRUE, assigned_at = CURRENT_TIMESTAMP 
+          WHERE token = $1
+        `, [actualToken]);
+        
+        console.log(`✅ Game token ${actualToken} marked as assigned`);
+      }
+      
+      await client.query('COMMIT');
+      
+      return res.json({
+        valid: true,
+        token: tokenData.token,
+        result: tokenData.result,
+        redeemed: tokenData.redeemed,
+        redeemedAt: tokenData.redeemed_at,
+        assigned: true,
+        assignedAt: new Date().toISOString()
+      });
+      
+    } catch (error) {
+      await client.query('ROLLBACK');
+      throw error;
+    } finally {
+      client.release();
     }
-
-    const token = rows[0];
-    return res.json({
-      valid: true,
-      token: token.token,
-      result: token.result,
-      redeemed: token.redeemed,
-      redeemedAt: token.redeemed_at,
-      assigned: token.assigned,
-      assignedAt: token.assigned_at
-    });
 
   } catch (error) {
     console.error('Error getting token status:', error);
@@ -503,7 +513,7 @@ app.get('/admin-coffee-dashboard-xyz789', async (req, res) => {
       <button class="refresh-btn" onclick="location.reload()">🔄 Refresh</button>
       <button class="qr-display-btn" onclick="window.open('/qr-display.html', '_blank')">📱 Open iPhone Display</button>
       <div class="security-notice">
-        🔒 <strong>Single-Use QR System Active:</strong> Each QR code can only be used once
+        🔒 <strong>Single-Use QR System Available:</strong> Each QR code can only be used once
       </div>
     </div>
 
