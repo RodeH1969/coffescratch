@@ -1,0 +1,167 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Coffee Spin QR Display</title>
+  <style>
+    body {
+      margin: 0;
+      padding: 20px;
+      background: linear-gradient(135deg, #1e3c72, #2a5298);
+      font-family: Arial, sans-serif;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+      min-height: 100vh;
+      color: white;
+      text-align: center;
+    }
+    
+    .display-container {
+      background: white;
+      border-radius: 20px;
+      padding: 40px;
+      box-shadow: 0 20px 40px rgba(0,0,0,0.3);
+      border: 3px solid #ffd700;
+      max-width: 400px;
+      width: 100%;
+    }
+    
+    .header {
+      color: #2c3e50;
+      margin-bottom: 20px;
+    }
+    
+    .qr-container {
+      margin: 20px 0;
+      padding: 20px;
+      background: #f8f9fa;
+      border-radius: 10px;
+      border: 2px solid #ffd700;
+    }
+    
+    #qrcode {
+      margin: 0 auto;
+    }
+    
+    .instructions {
+      color: #2c3e50;
+      font-size: 18px;
+      font-weight: bold;
+      margin-top: 20px;
+    }
+    
+    .status {
+      color: #28a745;
+      font-size: 16px;
+      margin-top: 15px;
+      min-height: 20px;
+    }
+    
+    .loading {
+      color: #ffc107;
+    }
+    
+    .coffee-icon {
+      font-size: 48px;
+      margin-bottom: 10px;
+    }
+  </style>
+</head>
+<body>
+  <div class="display-container">
+    <div class="coffee-icon">☕</div>
+    <h1 class="header">Coffee Spin Game</h1>
+    
+    <div class="qr-container">
+      <canvas id="qrcode" width="200" height="200"></canvas>
+      <div class="instructions">
+        Scan to Play the Game!
+      </div>
+    </div>
+    
+    <div id="status" class="status">Ready for next customer</div>
+  </div>
+
+  <!-- QR Code Library -->
+  <script src="/assets/qrious.min.js"></script>
+  
+  <script>
+    let currentToken = null;
+    let qrInstance = null;
+    
+    // Generate new QR code
+    async function generateNewQR() {
+      document.getElementById('status').textContent = 'Generating new code...';
+      document.getElementById('status').className = 'status loading';
+      
+      try {
+        const response = await fetch('/api/generate-single-use-token', {
+          method: 'POST'
+        });
+        
+        const data = await response.json();
+        
+        if (data.success) {
+          currentToken = data.token;
+          const gameURL = `${window.location.origin}/index.html?token=${data.token}`;
+          
+          // Create QR code
+          if (window.QRious) {
+            qrInstance = new QRious({
+              element: document.getElementById('qrcode'),
+              size: 200,
+              value: gameURL
+            });
+          }
+          
+          document.getElementById('status').textContent = 'Ready for next customer';
+          document.getElementById('status').className = 'status';
+          
+          // Start checking if token was used
+          checkTokenStatus();
+        } else {
+          document.getElementById('status').textContent = 'Error generating code';
+          document.getElementById('status').className = 'status loading';
+          setTimeout(generateNewQR, 3000);
+        }
+      } catch (error) {
+        console.error('Error generating QR:', error);
+        document.getElementById('status').textContent = 'Connection error - retrying...';
+        document.getElementById('status').className = 'status loading';
+        setTimeout(generateNewQR, 3000);
+      }
+    }
+    
+    // Check if current token has been used
+    async function checkTokenStatus() {
+      if (!currentToken) return;
+      
+      try {
+        const response = await fetch(`/api/check-token-used/${currentToken}`);
+        const data = await response.json();
+        
+        if (data.used) {
+          // Token was used! Generate new one
+          document.getElementById('status').textContent = 'Customer playing! New code coming...';
+          document.getElementById('status').className = 'status loading';
+          setTimeout(generateNewQR, 2000);
+        } else {
+          // Still waiting, check again in 2 seconds
+          setTimeout(checkTokenStatus, 2000);
+        }
+      } catch (error) {
+        console.error('Error checking token status:', error);
+        setTimeout(checkTokenStatus, 5000);
+      }
+    }
+    
+    // Start the system
+    window.addEventListener('load', () => {
+      generateNewQR();
+    });
+  </script>
+</body>
+</html>

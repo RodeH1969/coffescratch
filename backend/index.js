@@ -3,6 +3,7 @@ const express = require('express');
 const path = require('path');
 const QRCode = require('qrcode');
 const { Pool } = require('pg');
+const { v4: uuidv4 } = require('uuid');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -100,12 +101,137 @@ app.get('/scan', async (req, res) => {
   }
 });
 
+// NEW: Generate single-use token for iPhone display
+app.post('/api/generate-single-use-token', async (req, res) => {
+  try {
+    // Find and claim the next available token
+    const client = await pool.connect();
+    
+    try {
+      await client.query('BEGIN');
+      
+      const result = await client.query(`
+        UPDATE tokens 
+        SET assigned = TRUE, assigned_at = CURRENT_TIMESTAMP 
+        WHERE id = (
+          SELECT id FROM tokens 
+          WHERE NOT assigned AND NOT redeemed 
+          ORDER BY id LIMIT 1 
+          FOR UPDATE SKIP LOCKED
+        )
+        RETURNING token
+      `);
+
+      if (result.rows.length === 0) {
+        await client.query('ROLLBACK');
+        return res.json({ success: false, message: 'No tokens available' });
+      }
+
+      const gameToken = result.rows[0].token;
+      
+      // Create single-use token
+      const singleUseToken = `SU_${uuidv4().split('-')[0].toUpperCase()}`;
+      
+      await client.query(`
+        INSERT INTO single_use_tokens (token) 
+        VALUES ($1)
+      `, [singleUseToken]);
+      
+      await client.query('COMMIT');
+      
+      console.log(`📱 Generated single-use token: ${singleUseToken} -> ${gameToken}`);
+      
+      res.json({ 
+        success: true, 
+        token: `${singleUseToken}:${gameToken}` 
+      });
+      
+    } catch (error) {
+      await client.query('ROLLBACK');
+      throw error;
+    } finally {
+      client.release();
+    }
+
+  } catch (error) {
+    console.error('Error generating single-use token:', error);
+    res.json({ success: false, message: 'Server error' });
+  }
+});
+
+// NEW: Check if single-use token was used
+app.get('/api/check-token-used/:token', async (req, res) => {
+  try {
+    const tokenParts = req.params.token.split(':');
+    if (tokenParts.length !== 2) {
+      return res.json({ used: false });
+    }
+    
+    const [singleUseToken, gameToken] = tokenParts;
+    
+    // Check if the game token has been accessed
+    const result = await pool.query(`
+      SELECT assigned_at FROM tokens 
+      WHERE token = $1 AND assigned = TRUE
+    `, [gameToken]);
+    
+    if (result.rows.length > 0) {
+      // Mark single-use token as used
+      await pool.query(`
+        UPDATE single_use_tokens 
+        SET used = TRUE, used_at = CURRENT_TIMESTAMP 
+        WHERE token = $1 AND used = FALSE
+      `, [singleUseToken]);
+      
+      res.json({ used: true });
+    } else {
+      res.json({ used: false });
+    }
+
+  } catch (error) {
+    console.error('Error checking token status:', error);
+    res.json({ used: false });
+  }
+});
+
 // Token status endpoint
 app.get('/api/token/:token', async (req, res) => {
   try {
+    // Handle single-use token format
+    const tokenParam = req.params.token;
+    let actualToken = tokenParam;
+    
+    // If it's a single-use token format (SU_XXXX:GAME_TOKEN)
+    if (tokenParam.includes(':')) {
+      const [singleUseToken, gameToken] = tokenParam.split(':');
+      
+      // Verify single-use token is valid and not used
+      const singleUseCheck = await pool.query(`
+        SELECT used FROM single_use_tokens 
+        WHERE token = $1
+      `, [singleUseToken]);
+      
+      if (singleUseCheck.rows.length === 0) {
+        return res.json({ valid: false, message: 'Invalid token' });
+      }
+      
+      if (singleUseCheck.rows[0].used) {
+        return res.json({ valid: false, message: 'Token already used' });
+      }
+      
+      // Mark single-use token as used
+      await pool.query(`
+        UPDATE single_use_tokens 
+        SET used = TRUE, used_at = CURRENT_TIMESTAMP 
+        WHERE token = $1
+      `, [singleUseToken]);
+      
+      actualToken = gameToken;
+    }
+    
     const { rows } = await pool.query(
       'SELECT token, result, redeemed, redeemed_at, assigned, assigned_at FROM tokens WHERE token = $1',
-      [req.params.token]
+      [actualToken]
     );
 
     if (rows.length === 0) {
@@ -236,6 +362,15 @@ app.get('/admin-coffee-dashboard-xyz789', async (req, res) => {
       WHERE scan_date = CURRENT_DATE
     `);
 
+    // Get single-use token stats
+    const singleUseStats = await pool.query(`
+      SELECT 
+        COUNT(*) as total_generated,
+        COUNT(*) FILTER (WHERE used = TRUE) as total_used
+      FROM single_use_tokens 
+      WHERE created_at::date = CURRENT_DATE
+    `);
+
     // Function to convert UTC to AEST
     const toAEST = (utcDate) => {
       return new Date(utcDate).toLocaleString('en-AU', {
@@ -333,6 +468,16 @@ app.get('/admin-coffee-dashboard-xyz789', async (req, res) => {
       font-weight: bold;
       margin-bottom: 20px;
     }
+    .qr-display-btn {
+      background: #667eea;
+      color: white;
+      border: none;
+      padding: 10px 20px;
+      border-radius: 5px;
+      cursor: pointer;
+      font-weight: bold;
+      margin: 0 10px 20px 0;
+    }
     .timestamp { color: #666; font-size: 0.9em; }
     .upcoming-win { background: #d4edda; padding: 2px 4px; border-radius: 3px; }
     .upcoming-lose { background: #f8d7da; padding: 2px 4px; border-radius: 3px; }
@@ -356,8 +501,9 @@ app.get('/admin-coffee-dashboard-xyz789', async (req, res) => {
       <h1>☕ Coffee Spin Admin Dashboard</h1>
       <p>Last updated: ${currentTimeAEST} AEST</p>
       <button class="refresh-btn" onclick="location.reload()">🔄 Refresh</button>
+      <button class="qr-display-btn" onclick="window.open('/qr-display.html', '_blank')">📱 Open iPhone Display</button>
       <div class="security-notice">
-        🔒 <strong>Daily Limit Active:</strong> Each customer can only get 1 token per day (prevents abuse)
+        🔒 <strong>Single-Use QR System Active:</strong> Each QR code can only be used once
       </div>
     </div>
 
@@ -383,7 +529,8 @@ app.get('/admin-coffee-dashboard-xyz789', async (req, res) => {
     <div class="section">
       <h3>📅 Today's Activity</h3>
       <div class="token-list">
-        <strong>Unique Visitors:</strong> ${dailyScans.rows[0].unique_visitors_today}<br>
+        <strong>QR Codes Generated:</strong> ${singleUseStats.rows[0].total_generated}<br>
+        <strong>QR Codes Used:</strong> ${singleUseStats.rows[0].total_used}<br>
         <strong>Customers Played:</strong> ${today.rows[0].today_assigned}<br>
         <strong>Winners Today:</strong> ${today.rows[0].today_winners}<br>
         <strong>Coffee Redeemed:</strong> ${today.rows[0].today_redeemed}
@@ -518,4 +665,5 @@ app.listen(PORT, () => {
   console.log(`✅ Server running at ${BASE_URL}`);
   console.log(`🗄️  Database: ${process.env.DATABASE_URL ? 'Connected' : 'Not configured'}`);
   console.log(`🔒 Admin dashboard: ${BASE_URL}/admin-coffee-dashboard-xyz789`);
+  console.log(`📱 iPhone display: ${BASE_URL}/qr-display.html`);
 });
